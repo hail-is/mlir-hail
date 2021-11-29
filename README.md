@@ -33,6 +33,6 @@ There are no targets yet so a build will do nothing, but to set up a build:
 ```sh
 mkdir build
 cd build
-# same as the install directory above in the build/install LLVM
-MLIR_DIR=~/src/mlir-hail/cmake .. -G Ninja
+# same prefix as the install directory above in the build/install LLVM
+MLIR_DIR=~/src/mlir-hail/llvm/lib/cmake/mlir cmake .. -G Ninja
 ```
