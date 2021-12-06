@@ -30,8 +30,11 @@ Type OptionalDialect::parseType(DialectAsmParser &parser) const {
   llvm::SMLoc typeLoc = parser.getCurrentLocation();
   {
     Type genType;
+    StringRef typeTag;
+    if (failed(parser.parseKeyword(&typeTag)))
+      return Type();
     auto parseResult = generatedTypeParser(parser.getBuilder().getContext(),
-                                           parser, "optional_type", genType);
+                                           parser, typeTag, genType);
     if (parseResult.hasValue())
       return genType;
   }

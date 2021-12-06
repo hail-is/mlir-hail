@@ -5,6 +5,7 @@ include "mlir/Interfaces/ControlFlowInterfaces.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 
 include "OptionalDialect.td"
+include "mlir/Interfaces/SideEffectInterfaces.td"
 
 def PresentOp : Optional_Op<"present", []> {
   let summary = "present";
@@ -13,15 +14,15 @@ def PresentOp : Optional_Op<"present", []> {
 
   let arguments = (ins Variadic<AnyType>:$values);
 
-  let results = (outs AnyType);
+  let results = (outs OptionalType);
 }
 
-def MissingOp : Optional_Op<"missing", []> {
+def MissingOp : Optional_Op<"missing", [ConstantLike, NoSideEffect]> {
   let summary = "missing";
   let description = [{
   }];
 
-  let results = (outs AnyType);
+  let results = (outs OptionalType);
 }
 
 def ConsumeOptOp : Optional_Op<"consume_opt", []> {
