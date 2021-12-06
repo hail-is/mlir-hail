@@ -5,4 +5,7 @@
 
 #include "Optional/OptionalOpsDialect.h.inc"
 
+#define GET_TYPEDEF_CLASSES
+#include "Optional/OptionalOpsTypes.h.inc"
+
 #endif
