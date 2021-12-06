@@ -26,5 +26,6 @@ class Optional_Op<string mnemonic, list<OpTrait> traits = []> :
 // Optional type definition.
 //===----------------------------------------------------------------------===//
 
+class Optional_Type<string name> : TypeDef<Optional_Dialect, name>;
 
 #endif // HAIL_OPTIONAL_DIALECT
