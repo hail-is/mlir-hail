@@ -3,6 +3,10 @@
 
 include "mlir/IR/OpBase.td"
 
+//===----------------------------------------------------------------------===//
+// Optional dialect definition.
+//===----------------------------------------------------------------------===//
+
 def Optional_Dialect : Dialect {
   let name = "optional";
   let cppNamespace = "::hail::optional";
@@ -11,11 +15,16 @@ def Optional_Dialect : Dialect {
   }];
 }
 
+//===----------------------------------------------------------------------===//
+// Base optional operation definition.
+//===----------------------------------------------------------------------===//
+
 class Optional_Op<string mnemonic, list<OpTrait> traits = []> :
     Op<Optional_Dialect, mnemonic, traits>;
 
-def Optional_Type :
-    DialectType<Optional_Dialect, CPred<"$_self.isa<OptionalType>()">,
-                "Optional type">;
+//===----------------------------------------------------------------------===//
+// Optional type definition.
+//===----------------------------------------------------------------------===//
+
 
 #endif // HAIL_OPTIONAL_DIALECT
