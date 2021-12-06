@@ -1,3 +1,4 @@
+#include "mlir/Dialect/SCF/SCF.h"
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/InitAllDialects.h"
@@ -19,7 +20,7 @@ int main(int argc, char **argv) {
 
     mlir::DialectRegistry registry;
     registry.insert<hail::optional::OptionalDialect>();
-    registry.insert<mlir::StandardOpsDialect>();
+    registry.insert<mlir::StandardOpsDialect, mlir::scf::SCFDialect>();
     // Add the following to include *all* MLIR Core dialects, or selectively
     // include what you need like above. You only need to register dialects that
     // will be *parsed* by the tool, not the one generated
