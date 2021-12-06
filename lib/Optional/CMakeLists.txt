@@ -1,4 +1,4 @@
-add_mlir_dialect_library(MLIROptional
+add_mlir_dialect_library(HailOptional
     OptionalDialect.cpp
     OptionalOps.cpp
 
