@@ -7,7 +7,7 @@ include "mlir/Interfaces/SideEffectInterfaces.td"
 include "OptionalDialect.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 
-def PresentOp : Optional_Op<"present", []> {
+def PresentOp : Optional_Op<"present", [NoSideEffect]> {
   let summary = "present";
   let description = [{
   }];
