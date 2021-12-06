@@ -5,6 +5,6 @@ func @consume_missing(%b: i1, %i: i32) -> i32 {
   }, {
   ^bb0(%v: i32):
     optional.yield %v: i32
-  }) : (i32) -> i32
+  }) : (!optional.option) -> i32
   return %1 : i32
 }

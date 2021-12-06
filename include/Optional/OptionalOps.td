@@ -17,7 +17,7 @@ def PresentOp : Optional_Op<"present", []> {
   let results = (outs OptionalType);
 }
 
-def MissingOp : Optional_Op<"missing", [ConstantLike, NoSideEffect]> {
+def MissingOp : Optional_Op<"missing", [NoSideEffect]> {
   let summary = "missing";
   let description = [{
   }];
