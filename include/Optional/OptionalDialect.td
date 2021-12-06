@@ -28,4 +28,7 @@ class Optional_Op<string mnemonic, list<OpTrait> traits = []> :
 
 class Optional_Type<string name> : TypeDef<Optional_Dialect, name>;
 
+def OptionalType : Optional_Type<"Optional"> {
+}
+
 #endif // HAIL_OPTIONAL_DIALECT
