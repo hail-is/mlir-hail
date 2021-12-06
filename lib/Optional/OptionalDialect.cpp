@@ -13,3 +13,11 @@ void OptionalDialect::initialize() {
 #include "Optional/OptionalOps.cpp.inc"
       >();
 }
+
+Type OptionalDialect::parseType(DialectAsmParser &parser) const {
+  // TODO implement
+}
+
+void OptionalDialect::printType(Type type, DialectAsmPrinter &os) const {
+  // TODO implement
+}
