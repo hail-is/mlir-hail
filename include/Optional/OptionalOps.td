@@ -30,7 +30,7 @@ def ConsumeOptOp : Optional_Op<"consume_opt", []> {
   let description = [{
   }];
 
-  let arguments = (ins AnyType:$input);
+  let arguments = (ins OptionalType:$input);
   let results = (outs Variadic<AnyType>);
   let regions = (region AnyRegion:$missingRegion, AnyRegion:$presentRegion);
 
