@@ -22,19 +22,26 @@ static void replaceOpWithRegion(PatternRewriter &rewriter, Operation *op,
     rewriter.eraseOp(terminator);
 }
 
+
+
 namespace {
-struct RemoveConsumeMissing : public OpRewritePattern<ConsumeOptOp> {
+struct RemoveConsumePresentOrMissing : public OpRewritePattern<ConsumeOptOp> {
     using OpRewritePattern<ConsumeOptOp>::OpRewritePattern;
 
     LogicalResult matchAndRewrite(ConsumeOptOp op,
                                   PatternRewriter &rewriter) const override {
-        auto missing = op.input().getDefiningOp<MissingOp>();
-        if (!missing)
-            return failure();
 
-        replaceOpWithRegion(rewriter, op, op.missingRegion());
+        if (op.input().getDefiningOp<MissingOp>()) {
+            replaceOpWithRegion(rewriter, op, op.missingRegion());
+            return success();
+        }
 
-        return success();
+        if (auto present = op.input().getDefiningOp<PresentOp>()) {
+            replaceOpWithRegion(rewriter, op, op.presentRegion(), present.getOperands());
+            return success();
+        }
+
+        return failure();
     }
 };
 
@@ -43,5 +50,5 @@ struct RemoveConsumeMissing : public OpRewritePattern<ConsumeOptOp> {
 void ConsumeOptOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                                MLIRContext *context) {
     results
-        .add<RemoveConsumeMissing>(context);
+        .add<RemoveConsumePresentOrMissing>(context);
 }
