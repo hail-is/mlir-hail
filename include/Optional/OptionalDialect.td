@@ -33,4 +33,9 @@ def OptionalType : Optional_Type<"Optional"> {
   let summary = "an optional type";
 }
 
+def CoOptionalType : Optional_Type<"CoOptional"> {
+  let mnemonic = "co_option";
+  let summary = "a co_option type";
+}
+
 #endif // HAIL_OPTIONAL_DIALECT
