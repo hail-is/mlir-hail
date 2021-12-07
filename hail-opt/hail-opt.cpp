@@ -12,11 +12,13 @@
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/ToolOutputFile.h"
 
+#include "Conversion/Passes.h"
+
 #include "Optional/OptionalDialect.h"
 
 int main(int argc, char **argv) {
     mlir::registerAllPasses();
-    // TODO: Register standalone passes here.
+    hail::registerOptionalToStandardPass();
 
     mlir::DialectRegistry registry;
     registry.insert<hail::optional::OptionalDialect>();
