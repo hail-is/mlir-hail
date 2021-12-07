@@ -50,3 +50,13 @@ void ConsumeOptOp::getCanonicalizationPatterns(RewritePatternSet &results,
     results
         .add<RemoveConsumePresentOrMissing>(context);
 }
+
+LogicalResult PresentOp::inferReturnTypes(MLIRContext *context,
+                                          llvm::Optional<Location> location,
+                                          ValueRange operands,
+                                          DictionaryAttr attributes,
+                                          RegionRange regions,
+                                          llvm::SmallVectorImpl<Type>&inferredReturnTypes) {
+    Type resultType = OptionalType::get(context, operands[0].getType());
+    inferredReturnTypes.push_back(resultType);
+}
