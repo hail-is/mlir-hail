@@ -26,13 +26,53 @@ ninja # this will take a while
 ninja install
 ```
 
-## Setting up this build
+## Building the mlir-hail project
 
-There are no targets yet so a build will do nothing, but to set up a build:
+To set up the build:
 
 ```sh
 mkdir build
 cd build
 # same prefix as the install directory above in the build/install LLVM
 MLIR_DIR=~/src/mlir-hail/llvm/lib/cmake/mlir cmake .. -G Ninja
+```
+
+To build:
+```sh
+cd build
+ninja
+```
+
+## The `optional` MLIR Dialect
+
+As first pass, we've created the `optional` dialect to process possibly optional
+values. The main definitions are in the TableGen files in
+[include/Optional/](include/Optional).
+
+The `hail-opt` binary can be used to explore MLIR modules written in our
+dialect. For example:
+
+```
+# CWD=build
+$ bin/hail-opt --print-ir-before-all --canonicalize ../examples/consume-present.mlir
+// -----// IR Dump Before Canonicalizer //----- //
+module  {
+  func @consume_missing(%arg0: i1, %arg1: i32) -> i32 {
+    %0 = "optional.missing"() : () -> !optional.option
+    %1 = "optional.consume_opt"(%0) ( {
+      optional.yield %arg1 : i32
+    },  {
+    ^bb0(%arg2: i32):  // no predecessors
+      optional.yield %arg2 : i32
+    }) : (!optional.option) -> i32
+    return %1 : i32
+  }
+}
+
+
+module  {
+  func @consume_missing(%arg0: i1, %arg1: i32) -> i32 {
+    return %arg1 : i32
+  }
+}
 ```
