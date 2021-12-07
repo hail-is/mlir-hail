@@ -49,7 +49,7 @@ def ConsumeOptOp : Optional_Op<"consume_opt", []> {
 }
 
 def YieldOp : Optional_Op<"yield", [NoSideEffect, ReturnLike, Terminator,
-                                    ParentOneOf<["ConsumeOptOp" ]>]> {
+                                    ParentOneOf<["ConsumeOptOp"]>]> {
   let summary = "consume_opt yield and termination operation";
   let description = [{
   }];
@@ -58,7 +58,7 @@ def YieldOp : Optional_Op<"yield", [NoSideEffect, ReturnLike, Terminator,
   let builders = [OpBuilder<(ins), [{ /* nothing to do */ }]>];
 
   let assemblyFormat =
-      [{  attr-dict ($results^ `:` type($results))? }];
+      [{ attr-dict ($results^ `:` type($results))? }];
 }
 
 #endif
