@@ -5,6 +5,7 @@ set(LIBS
         ${conversion_libs}
         MLIROptLib
         HailOptional
+        HailControl
         )
 add_llvm_executable(hail-opt hail-opt.cpp)
 

@@ -13,6 +13,7 @@
 #include "llvm/Support/ToolOutputFile.h"
 
 #include "Optional/OptionalDialect.h"
+#include "Control/ControlDialect.h"
 
 int main(int argc, char **argv) {
     mlir::registerAllPasses();
@@ -20,6 +21,7 @@ int main(int argc, char **argv) {
 
     mlir::DialectRegistry registry;
     registry.insert<hail::optional::OptionalDialect>();
+    registry.insert<hail::control::ControlDialect>();
     registry.insert<mlir::StandardOpsDialect, mlir::scf::SCFDialect>();
     // Add the following to include *all* MLIR Core dialects, or selectively
     // include what you need like above. You only need to register dialects that

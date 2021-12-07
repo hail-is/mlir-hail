@@ -6,6 +6,7 @@ include "mlir/Interfaces/SideEffectInterfaces.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 
 include "OptionalDialect.td"
+
 include "mlir/Interfaces/SideEffectInterfaces.td"
 
 def PresentOp : Optional_Op<"present", [NoSideEffect, DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
@@ -59,6 +60,32 @@ def YieldOp : Optional_Op<"yield", [NoSideEffect, ReturnLike, Terminator,
 
   let assemblyFormat =
       [{ attr-dict ($results^ `:` type($results))? }];
+}
+
+def ConstructCoOptOp : CoOptional_Op<"construct_co_opt"> {
+  let summary = "construct a co-optional type";
+  let description = [{
+  }];
+
+  let results = (outs CoOptionalType:$results);
+
+  let regions = (region AnyRegion:$reg);
+
+  let assemblyFormat =
+      [{ $reg attr-dict `:` type($results) }];
+}
+
+def ConsumeCoOptOp : CoOptional_Op<"consume_co_opt", [Terminator]> {
+  let summary = "consume a co-optional type";
+  let description = [{
+  }];
+
+  // TODO Make $missing and $present `ContinuationType`s
+  let arguments = (ins CoOptionalType:$opt, AnyType:$missing, AnyType:$present);
+
+  let assemblyFormat = [{
+    `(` $opt `,` $missing `,` $present `)` attr-dict `:` `(` type($opt) `,` type($missing) `,` type($present) `)`
+  }];
 }
 
 #endif
