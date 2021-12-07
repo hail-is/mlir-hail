@@ -22,8 +22,6 @@ static void replaceOpWithRegion(PatternRewriter &rewriter, Operation *op,
     rewriter.eraseOp(terminator);
 }
 
-
-
 namespace {
 struct RemoveConsumePresentOrMissing : public OpRewritePattern<ConsumeOptOp> {
     using OpRewritePattern<ConsumeOptOp>::OpRewritePattern;
