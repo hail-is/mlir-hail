@@ -3,18 +3,23 @@
 
 include "mlir/Interfaces/ControlFlowInterfaces.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
+include "mlir/Interfaces/InferTypeOpInterface.td"
 
 include "OptionalDialect.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 
-def PresentOp : Optional_Op<"present", [NoSideEffect]> {
+def PresentOp : Optional_Op<"present", [NoSideEffect, DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "present";
   let description = [{
   }];
 
   let arguments = (ins Variadic<AnyType>:$values);
 
-  let results = (outs OptionalType);
+  let results = (outs OptionalType:$result);
+
+  let assemblyFormat = [{
+   `(` $values `)` attr-dict `:` functional-type($values, $result)
+  }];
 }
 
 def MissingOp : Optional_Op<"missing", [NoSideEffect]> {
@@ -22,7 +27,9 @@ def MissingOp : Optional_Op<"missing", [NoSideEffect]> {
   let description = [{
   }];
 
-  let results = (outs OptionalType);
+  let results = (outs OptionalType:$result);
+
+  let assemblyFormat = [{ attr-dict `:` type($result) }];
 }
 
 def ConsumeOptOp : Optional_Op<"consume_opt", []> {
@@ -35,6 +42,10 @@ def ConsumeOptOp : Optional_Op<"consume_opt", []> {
   let regions = (region AnyRegion:$missingRegion, AnyRegion:$presentRegion);
 
   let hasCanonicalizer = 1;
+
+  let assemblyFormat = [{
+    `(` $input `)` $missingRegion `,` $presentRegion attr-dict `:` functional-type($input, results)
+  }];
 }
 
 def YieldOp : Optional_Op<"yield", [NoSideEffect, ReturnLike, Terminator,
