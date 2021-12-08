@@ -40,7 +40,7 @@ def ConsumeOptOp : Optional_Op<"consume_opt", []> {
 
   let arguments = (ins OptionalType:$input);
   let results = (outs Variadic<AnyType>);
-  let regions = (region AnyRegion:$missingRegion, AnyRegion:$presentRegion);
+  let regions = (region SizedRegion<1>:$missingRegion, SizedRegion<1>:$presentRegion);
 
   let hasCanonicalizer = 1;
 
