@@ -34,7 +34,11 @@ To set up the build:
 mkdir build
 cd build
 # same prefix as the install directory above in the build/install LLVM
-MLIR_DIR=~/src/mlir-hail/llvm/lib/cmake/mlir cmake .. -G Ninja
+cmake .. -G Ninja \
+  -DMLIR_DIR=~/src/mlir-hail/llvm/lib/cmake/mlir \
+  -DLLVM_BUILD_BINARY_DIR=~/src/llvm-project/build/bin
+  # ^ this argument is necessary to find llvm-lit and FileCheck for the tests
+  #   they are skipped and a warning printed otherwise
 ```
 
 To build:
