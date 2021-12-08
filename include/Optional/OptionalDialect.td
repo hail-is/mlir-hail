@@ -52,9 +52,38 @@ def OptionalType : Optional_Type<"Optional"> {
   }];
 }
 
+//===----------------------------------------------------------------------===//
+// Base optional operation definition.
+//===----------------------------------------------------------------------===//
+
+class CoOptional_Op<string mnemonic, list<OpTrait> traits = []> :
+    Op<Optional_Dialect, mnemonic, traits>;
+
+//===----------------------------------------------------------------------===//
+// Optional type definition.
+//===----------------------------------------------------------------------===//
+
 def CoOptionalType : Optional_Type<"CoOptional"> {
   let mnemonic = "co_option";
   let summary = "a co_option type";
+
+  let parameters = (ins TypeParameter<"Type", "value type">:$valueType);
+
+  let printer = [{
+    $_printer << CoOptionalType::getMnemonic() << '<' << getValueType() << '>';
+  }];
+
+  let parser = [{
+    llvm::SMLoc loc = $_parser.getCurrentLocation();
+    Type elementType;
+    if ($_parser.parseLess() || $_parser.parseType(elementType))
+      return CoOptionalType();
+
+    if (failed($_parser.parseGreater()))
+      return CoOptionalType();
+
+    return CoOptionalType::get($_ctxt, elementType);
+  }];
 }
 
 #endif // HAIL_OPTIONAL_DIALECT
