@@ -3,7 +3,8 @@ configure_file(lit.site.cfg.py.in lit.site.cfg.py @ONLY)
 find_program(LLVM_LIT "llvm-lit"
     HINTS ${LLVM_TOOLS_BINARY_DIR} ${LLVM_BUILD_BINARY_DIR})
 
-if(${LLVM_LIT})
+if(LLVM_LIT)
+    message(STATUS "found llvm-lit: ${LLVM_LIT}")
     get_filename_component(LLVM_TEST_BINARY_DIR "${LLVM_LIT}" DIRECTORY)
 
     find_program(FILE_CHECK "FileCheck" HINTS ${LLVM_TEST_BINARY_DIR} REQUIRED)
