@@ -38,9 +38,8 @@ def ContinuationType : Cont_Type<"Continuation"> {
   let printer = [{
     $_printer << ContinuationType::getMnemonic() << '<' << getInputType() << '>';
   }];
-  
+
   let parser = [{
-    llvm::SMLoc loc = $_parser.getCurrentLocation();
     Type inputType;
     if ($_parser.parseLess() || $_parser.parseType(inputType))
       return ContinuationType();

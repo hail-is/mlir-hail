@@ -38,9 +38,8 @@ def OptionalType : Optional_Type<"Optional"> {
   let printer = [{
     $_printer << OptionalType::getMnemonic() << '<' << getValueType() << '>';
   }];
-  
+
   let parser = [{
-    llvm::SMLoc loc = $_parser.getCurrentLocation();
     Type elementType;
     if ($_parser.parseLess() || $_parser.parseType(elementType))
       return OptionalType();
@@ -74,7 +73,6 @@ def CoOptionalType : Optional_Type<"CoOptional"> {
   }];
 
   let parser = [{
-    llvm::SMLoc loc = $_parser.getCurrentLocation();
     Type elementType;
     if ($_parser.parseLess() || $_parser.parseType(elementType))
       return CoOptionalType();
