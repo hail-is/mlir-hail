@@ -11,7 +11,7 @@ def DefCont : Control_Op<"define_cont", []> {
 
   let results = (outs ContinuationType:$result);
 
-  let regions = (region AnyRegion:$contRegion);
+  let regions = (region SizedRegion<1>:$contRegion);
 
   let assemblyFormat = [{ $contRegion attr-dict `:` type($result) }];
 }
