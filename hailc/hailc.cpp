@@ -3,12 +3,15 @@
 #include "mlir/IR/AsmState.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
+#include "mlir/Target/LLVMIR/Dialect/All.h"
 #include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"
 #include "mlir/Target/LLVMIR/Export.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/IR/Module.h"
+#include "llvm/IR/LegacyPassNameParser.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/ErrorOr.h"
+#include "llvm/Support/InitLLVM.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/TargetSelect.h"
@@ -72,6 +75,8 @@ cl::list<std::string> clSharedLibs{
 
 cl::opt<std::string> outputFilename{"o",
     cl::desc("Write any output, (mlir, llvm, asm, object)")};
+cl::list<const llvm::PassInfo *, bool, llvm::PassNameParser> llvmPasses{
+    cl::desc("LLVM optimizing passes to run"), cl::cat(optFlags)};
 
 int loadAndProcess(mlir::MLIRContext &context,
                    mlir::OwningModuleRef &module)
@@ -109,15 +114,24 @@ int dumpLLVMIR(mlir::ModuleOp module) {
 }
 
 int main(int argc, char **argv) {
+  llvm::InitLLVM y(argc, argv);
+  llvm::InitializeNativeTarget();
+  llvm::InitializeNativeTargetAsmPrinter();
+  llvm::InitializeNativeTargetAsmParser();
+
+  mlir::initializeLLVMPasses();
   mlir::registerAsmPrinterCLOptions();
   mlir::registerMLIRContextCLOptions();
   mlir::registerPassManagerCLOptions();
 
   cl::ParseCommandLineOptions(argc, argv, "hail compiler\n");
 
-  mlir::MLIRContext context;
-  context.getOrLoadDialect<hail::optional::OptionalDialect>();
-  context.getOrLoadDialect<hail::control::ControlDialect>();
+  mlir::DialectRegistry registry;
+  registry.insert<hail::optional::OptionalDialect>();
+  registry.insert<hail::control::ControlDialect>();
+  mlir::registerAllToLLVMIRTranslations(registry);
+
+  mlir::MLIRContext context(registry);
 
   mlir::OwningModuleRef module;
   if (int error = loadAndProcess(context, module))
