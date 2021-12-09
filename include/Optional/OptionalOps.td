@@ -3,11 +3,10 @@
 
 include "mlir/Interfaces/ControlFlowInterfaces.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
-include "mlir/Interfaces/InferTypeOpInterface.td"
 
 include "OptionalDialect.td"
 
-def PresentOp : Optional_Op<"present", [NoSideEffect, DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+def PresentOp : Optional_Op<"present", [NoSideEffect]> {
   let summary = "present";
   let description = [{
   }];
