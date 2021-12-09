@@ -1,14 +1,23 @@
+#include "mlir/Dialect/SCF/SCF.h"
 #include "mlir/ExecutionEngine/ExecutionEngine.h"
 #include "mlir/ExecutionEngine/OptUtils.h"
 #include "mlir/IR/AsmState.h"
+#include "mlir/InitAllDialects.h"
+#include "mlir/InitAllPasses.h"
+#include "mlir/Parser.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
+#include "mlir/Support/FileUtilities.h"
+#include "mlir/Target/LLVMIR/Dialect/All.h"
 #include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"
 #include "mlir/Target/LLVMIR/Export.h"
+
 #include "llvm/ADT/StringRef.h"
+#include "llvm/IR/LegacyPassNameParser.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/ErrorOr.h"
+#include "llvm/Support/InitLLVM.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/TargetSelect.h"
@@ -19,6 +28,7 @@
 #include "Optional/OptionalDialect.h"
 #include "Control/ControlDialect.h"
 
+using namespace mlir;
 namespace cl = llvm::cl;
 
 static cl::opt<std::string> inputFilename(cl::Positional,
@@ -64,6 +74,7 @@ cl::opt<bool> optO2{"O2",
 cl::opt<bool> optO3{"O3",
                     cl::desc("Run opt passes and codegen at O3"),
                     cl::cat(optFlags)};
+
 cl::OptionCategory clOptionsCategory{"linking options"};
 cl::list<std::string> clSharedLibs{
     "shared-libs", cl::desc("Libraries to link dynamically"),
@@ -72,15 +83,61 @@ cl::list<std::string> clSharedLibs{
 
 cl::opt<std::string> outputFilename{"o",
     cl::desc("Write any output, (mlir, llvm, asm, object)")};
+cl::list<const llvm::PassInfo *, bool, llvm::PassNameParser> llvmPasses{
+    cl::desc("LLVM optimizing passes to run"), cl::cat(optFlags)};
+
+unsigned optLevel = 0, optPosition = 0;
 
 int loadAndProcess(mlir::MLIRContext &context,
                    mlir::OwningModuleRef &module)
 {
-  // TODO
-  return -1;
+  std::string errorMessage;
+  auto file = openInputFile(inputFilename, &errorMessage);
+  if (!file) {
+    llvm::errs() << errorMessage << '\n';
+    return 1;
+  }
+
+  llvm::SourceMgr sourceMgr;
+  sourceMgr.AddNewSourceBuffer(std::move(file), llvm::SMLoc());
+  module = parseSourceFile(sourceMgr, &context);
+  if (!module) {
+    llvm::errs() << "could not parse input IR\n";
+    return 1;
+  }
+
+  mlir::PassManager pm(&context);
+  // Apply any generic pass manager command line options and run the pipeline.
+  applyPassManagerCLOptions(pm);
+
+  bool isLowering = emitAction > DumpMLIR;
+  if (optLevel > 0 || isLowering) {
+    mlir::OpPassManager &optPM = pm.nest<mlir::FuncOp>();
+    optPM.addPass(mlir::createCanonicalizerPass());
+    optPM.addPass(mlir::createCSEPass());
+  }
+
+  if (isLowering) {
+    mlir::OpPassManager &optPM = pm.nest<mlir::FuncOp>();
+
+    // Partially lower the optional dialect with a few cleanups afterwards.
+    optPM.addPass(hail::createLowerOptionalToSTDPass());
+    optPM.addPass(mlir::createCanonicalizerPass());
+    optPM.addPass(mlir::createCSEPass());
+
+    if (optLevel > 0) {
+      optPM.addPass(mlir::createLoopFusionPass());
+    }
+
+    pm.addPass(mlir::createLowerToLLVMPass());
+
+    return mlir::failed(pm.run(*module)) ? 1 : 0;
+  }
+
+  return 0;
 }
 
-int dumpLLVMIR(mlir::ModuleOp module) {
+int dumpLLVMIR(ArrayRef<const llvm::PassInfo *> passes, mlir::ModuleOp module) {
   // Register the translation to LLVM IR with the MLIR context.
   mlir::registerLLVMDialectTranslation(*module->getContext());
 
@@ -89,19 +146,18 @@ int dumpLLVMIR(mlir::ModuleOp module) {
   auto llvmModule = mlir::translateModuleToLLVMIR(module, llvmContext);
   if (!llvmModule) {
     llvm::errs() << "Failed to emit LLVM IR\n";
-    return -1;
+    return 1;
   }
 
   llvm::InitializeNativeTarget();
   llvm::InitializeNativeTargetAsmPrinter();
   mlir::ExecutionEngine::setupTargetTriple(llvmModule.get());
 
-  auto optPipeline = mlir::makeOptimizingTransformer(
-      /*optLevel=*/0 /*TODO respect command line opt level*/, /*sizeLevel=*/0,
-      /*targetMachine=*/nullptr);
+  auto optPipeline = mlir::makeLLVMPassesTransformer(
+      passes, optLevel, /*targetMachine=*/nullptr, optPosition);
   if (auto err = optPipeline(llvmModule.get())) {
     llvm::errs() << "Failed to optimize LLVM IR " << err << "\n";
-    return -1;
+    return 1;
   }
   // TODO alternate output stream
   llvm::errs() << *llvmModule << "\n";
@@ -109,15 +165,61 @@ int dumpLLVMIR(mlir::ModuleOp module) {
 }
 
 int main(int argc, char **argv) {
+  llvm::InitLLVM y(argc, argv);
+  llvm::InitializeNativeTarget();
+  llvm::InitializeNativeTargetAsmPrinter();
+  llvm::InitializeNativeTargetAsmParser();
+
+  mlir::initializeLLVMPasses();
   mlir::registerAsmPrinterCLOptions();
   mlir::registerMLIRContextCLOptions();
   mlir::registerPassManagerCLOptions();
 
   cl::ParseCommandLineOptions(argc, argv, "hail compiler\n");
 
-  mlir::MLIRContext context;
-  context.getOrLoadDialect<hail::optional::OptionalDialect>();
-  context.getOrLoadDialect<hail::control::ControlDialect>();
+  mlir::DialectRegistry registry;
+  registry.insert<hail::optional::OptionalDialect,
+                  hail::control::ControlDialect,
+                  mlir::StandardOpsDialect,
+                  mlir::scf::SCFDialect,
+                  mlir::LLVM::LLVMDialect>();
+  mlir::registerAllToLLVMIRTranslations(registry);
+
+  SmallVector<std::reference_wrapper<llvm::cl::opt<bool>>, 4> optFlags{
+      optO0, optO1, optO2, optO3};
+
+  // Determine if there is an optimization flag present.
+  for (unsigned j = 0; j < 4; ++j) {
+    auto &flag = optFlags[j].get();
+    if (flag) {
+      optLevel = j;
+      break;
+    }
+  }
+
+  unsigned optCLIPosition = 0;
+  // Determine if there is an optimization flag present, and its CLI position
+  // (optCLIPosition).
+  for (unsigned j = 0; j < 4; ++j) {
+    auto &flag = optFlags[j].get();
+    if (flag) {
+      optCLIPosition = flag.getPosition();
+      break;
+    }
+  }
+
+  // Generate vector of pass information, plus the index at which we should
+  // insert any optimization passes in that vector (optPosition).
+  SmallVector<const llvm::PassInfo *, 4> passes;
+  for (unsigned i = 0, e = llvmPasses.size(); i < e; ++i) {
+    passes.push_back(llvmPasses[i]);
+    if (optCLIPosition < llvmPasses.getPosition(i)) {
+      optPosition = i;
+      optCLIPosition = UINT_MAX; // To ensure we never insert again
+    }
+  }
+
+  MLIRContext context(registry);
 
   mlir::OwningModuleRef module;
   if (int error = loadAndProcess(context, module))
@@ -131,8 +233,8 @@ int main(int argc, char **argv) {
     return 0;
   }
 
-  if (emitAction == Action::DumpLLVMIR)
-    return dumpLLVMIR(*module);
+  if (emitAction == Action::DumpLLVMIR || true)
+    return dumpLLVMIR(passes, *module);
 
   // TODO object emission, execution
 }

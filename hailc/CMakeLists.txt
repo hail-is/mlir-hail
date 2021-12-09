@@ -9,8 +9,16 @@ set(LLVM_LINK_COMPONENTS
 set(LIBS
         ${dialect_libs}
         ${conversion_libs}
+
         MLIRExecutionEngine
+        MLIRIR
+        MLIRJitRunner
+        MLIRLLVMIR
+        MLIRLLVMToLLVMIRTranslation
         MLIROptLib
+        MLIRTargetLLVMIRExport
+        MLIRToLLVMIRTranslationRegistration
+
         HailOptionalToStandard
         HailOptional
         HailControl
