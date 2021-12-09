@@ -1,7 +1,8 @@
 #include "Conversion/OptionalToStandard/OptionalToStandard.h"
 #include "../PassDetail.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/SCF/SCF.h"
+#include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Transforms/DialectConversion.h"
 
@@ -60,6 +61,17 @@ struct ConvertConsumeOptOp : public OpRewritePattern<ConsumeOptOp> {
     rewriter.setInsertionPointToEnd(ifOp.thenBlock());
     rewriter.replaceOpWithNewOp<scf::YieldOp>(thenYield, thenYield->getOperands());
 
+    return success();
+  }
+};
+
+struct ConvertUndefinedOp : public OpRewritePattern<UndefinedOp> {
+  using OpRewritePattern<UndefinedOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(UndefinedOp op,
+                                PatternRewriter &rewriter) const {
+    // TODO make convert/ensure the result type is legal for LLVM
+    rewriter.replaceOpWithNewOp<mlir::LLVM::UndefOp>(op, op.result().getType());
     return success();
   }
 };
@@ -143,7 +155,7 @@ struct ConvertIfReturningOptional : public OpRewritePattern<scf::IfOp> {
 
 void hail::populateOptionalToStdConversionPatterns(RewritePatternSet &patterns) {
   patterns.add<ConvertPresentOp, ConvertMissingOp, ConvertConsumeOptOp,
-               ConvertIfReturningOptional>(patterns.getContext());
+               ConvertUndefinedOp, ConvertIfReturningOptional>(patterns.getContext());
 }
 
 void OptionalToStandardPass::runOnOperation() {
@@ -151,7 +163,7 @@ void OptionalToStandardPass::runOnOperation() {
   populateOptionalToStdConversionPatterns(patterns);
   // Configure conversion to lower out .... Anything else is fine.
   ConversionTarget target(getContext());
-  target.addIllegalOp<PresentOp, MissingOp, ConsumeOptOp>();
+  target.addIllegalOp<PresentOp, MissingOp, ConsumeOptOp, UndefinedOp>();
   target.addDynamicallyLegalOp<scf::IfOp>([](scf::IfOp op) {
     for (auto result : op.results()) {
       if (result.getType().isa<OptionalType>()) return false;
