@@ -33,7 +33,9 @@ def MissingOp : Optional_Op<"missing", [NoSideEffect]> {
   let assemblyFormat = [{ attr-dict `:` type($result) }];
 }
 
-def ConsumeOptOp : Optional_Op<"consume_opt", []> {
+def ConsumeOptOp : Optional_Op<"consume_opt", [
+      DeclareOpInterfaceMethods<RegionBranchOpInterface>,
+      SingleBlockImplicitTerminator<"YieldOp">]> {
   let summary = "consume_opt";
   let description = [{
   }];
@@ -42,10 +44,19 @@ def ConsumeOptOp : Optional_Op<"consume_opt", []> {
   let results = (outs Variadic<AnyType>);
   let regions = (region SizedRegion<1>:$missingRegion, SizedRegion<1>:$presentRegion);
 
+  let verifier = [{ return ::verify(*this); }];
+
   let hasCanonicalizer = 1;
 
   let assemblyFormat = [{
     `(` $input `)` $missingRegion `,` $presentRegion attr-dict `:` functional-type($input, results)
+  }];
+
+  let extraClassDeclaration = [{
+    mlir::Block *missingBlock();
+    YieldOp missingYield();
+    mlir::Block *presentBlock();
+    YieldOp presentYield();
   }];
 }
 

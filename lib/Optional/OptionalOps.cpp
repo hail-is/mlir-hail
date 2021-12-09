@@ -2,9 +2,6 @@
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/PatternMatch.h"
 
-#define GET_OP_CLASSES
-#include "Optional/OptionalOps.cpp.inc"
-
 using namespace mlir;
 using namespace hail::optional;
 
@@ -60,3 +57,44 @@ LogicalResult PresentOp::inferReturnTypes(MLIRContext *context,
     Type resultType = OptionalType::get(context, operands[0].getType());
     inferredReturnTypes.push_back(resultType);
 }
+
+static LogicalResult verify(ConsumeOptOp op) {
+    auto inputTypes = op.input().getType().cast<OptionalType>().getValueType();
+    auto presentTypes = op.presentBlock()->getArgumentTypes();
+
+    // TODO variadic type for option data
+    if (inputTypes != presentTypes[0])
+        return op.emitOpError(
+            "expect the presentBlock's arguments to have the same types "
+            "as the consumed option value");
+
+    return RegionBranchOpInterface::verifyTypes(op);
+}
+
+Block *ConsumeOptOp::missingBlock() { return &missingRegion().back(); }
+YieldOp ConsumeOptOp::missingYield() { return cast<YieldOp>(&missingBlock()->back()); }
+Block *ConsumeOptOp::presentBlock() { return &presentRegion().back(); }
+YieldOp ConsumeOptOp::presentYield() { return cast<YieldOp>(&presentBlock()->back()); }
+
+/// Given the region at `index`, or the parent operation if `index` is None,
+/// return the successor regions. These are the regions that may be selected
+/// during the flow of control. `operands` is a set of optional attributes that
+/// correspond to a constant value for each operand, or null if that operand is
+/// not a constant.
+void ConsumeOptOp::getSuccessorRegions(Optional<unsigned> index,
+                               ArrayRef<Attribute> operands,
+                               SmallVectorImpl<RegionSuccessor> &regions) {
+  // The `missing` and the `present` regions branch back to the parent operation.
+  if (index.hasValue()) {
+    regions.push_back(RegionSuccessor(getResults()));
+    return;
+  }
+
+  regions.push_back(RegionSuccessor(&missingRegion()));
+  regions.push_back(RegionSuccessor(&presentRegion()));
+}
+
+// TableGen'erated class code
+
+#define GET_OP_CLASSES
+#include "Optional/OptionalOps.cpp.inc"
