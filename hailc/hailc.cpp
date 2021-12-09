@@ -40,6 +40,7 @@ namespace {
 enum Action {
   None,
   DumpMLIR,
+  DumpMLIRStd,
   DumpMLIRLLVM,
   DumpLLVMIR,
   DumpObjectCode,
@@ -52,6 +53,8 @@ static cl::opt<enum Action> emitAction(
     "emit", cl::desc("Select the kind of output/behavior desired (Default: runs input with the JIT)"),
     cl::init(RunJIT),
     cl::values(clEnumValN(DumpMLIR, "mlir", "output the MLIR dump")),
+    cl::values(clEnumValN(DumpMLIRStd, "mlir-std",
+                          "output the MLIR dump after optional to std lowering")),
     cl::values(clEnumValN(DumpMLIRLLVM, "mlir-llvm",
                           "output the MLIR dump after llvm lowering")),
     cl::values(clEnumValN(DumpLLVMIR, "llvm", "output the LLVM IR dump")),
@@ -110,18 +113,33 @@ int loadAndProcess(mlir::MLIRContext &context,
   // Apply any generic pass manager command line options and run the pipeline.
   applyPassManagerCLOptions(pm);
 
-  bool isLowering = emitAction > DumpMLIR;
+  bool isLowering = emitAction >= DumpMLIRStd;
   if (optLevel > 0 || isLowering) {
     mlir::OpPassManager &optPM = pm.nest<mlir::FuncOp>();
+    // lightly optimize the base ir
     optPM.addPass(mlir::createCanonicalizerPass());
     optPM.addPass(mlir::createCSEPass());
   }
 
   if (isLowering) {
     mlir::OpPassManager &optPM = pm.nest<mlir::FuncOp>();
-
-    // Partially lower the optional dialect with a few cleanups afterwards.
+    // partly lower optional to std/scf
     optPM.addPass(hail::createLowerOptionalToSTDPass());
+  }
+
+  bool isLoweringLLVM = emitAction >= DumpMLIRLLVM;
+  if (optLevel > 0 || isLoweringLLVM) {
+    mlir::OpPassManager &optPM = pm.nest<mlir::FuncOp>();
+    // lightly optimize the partially lowered ir
+    optPM.addPass(mlir::createCanonicalizerPass());
+    optPM.addPass(mlir::createCSEPass());
+  }
+
+  if (isLoweringLLVM) {
+    mlir::OpPassManager &optPM = pm.nest<mlir::FuncOp>();
+
+    // lower SCF to cfg and lightly optimize
+    optPM.addPass(mlir::createLowerToCFGPass());
     optPM.addPass(mlir::createCanonicalizerPass());
     optPM.addPass(mlir::createCSEPass());
 
