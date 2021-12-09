@@ -70,6 +70,7 @@ struct ConvertUndefinedOp : public OpRewritePattern<UndefinedOp> {
 
   LogicalResult matchAndRewrite(UndefinedOp op,
                                 PatternRewriter &rewriter) const {
+    // TODO make convert/ensure the result type is legal for LLVM
     rewriter.replaceOpWithNewOp<mlir::LLVM::UndefOp>(op, op.result().getType());
     return success();
   }
@@ -162,7 +163,7 @@ void OptionalToStandardPass::runOnOperation() {
   populateOptionalToStdConversionPatterns(patterns);
   // Configure conversion to lower out .... Anything else is fine.
   ConversionTarget target(getContext());
-  target.addIllegalOp<PresentOp, MissingOp, ConsumeOptOp>();
+  target.addIllegalOp<PresentOp, MissingOp, ConsumeOptOp, UndefinedOp>();
   target.addDynamicallyLegalOp<scf::IfOp>([](scf::IfOp op) {
     for (auto result : op.results()) {
       if (result.getType().isa<OptionalType>()) return false;
