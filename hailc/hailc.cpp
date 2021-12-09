@@ -1,14 +1,20 @@
+#include "mlir/Dialect/SCF/SCF.h"
 #include "mlir/ExecutionEngine/ExecutionEngine.h"
 #include "mlir/ExecutionEngine/OptUtils.h"
 #include "mlir/IR/AsmState.h"
+#include "mlir/InitAllDialects.h"
+#include "mlir/InitAllPasses.h"
+#include "mlir/Parser.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
+#include "mlir/Support/FileUtilities.h"
 #include "mlir/Target/LLVMIR/Dialect/All.h"
 #include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"
 #include "mlir/Target/LLVMIR/Export.h"
+
 #include "llvm/ADT/StringRef.h"
-#include "llvm/IR/Module.h"
 #include "llvm/IR/LegacyPassNameParser.h"
+#include "llvm/IR/Module.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/ErrorOr.h"
 #include "llvm/Support/InitLLVM.h"
@@ -22,6 +28,7 @@
 #include "Optional/OptionalDialect.h"
 #include "Control/ControlDialect.h"
 
+using namespace mlir;
 namespace cl = llvm::cl;
 
 static cl::opt<std::string> inputFilename(cl::Positional,
@@ -81,8 +88,22 @@ cl::list<const llvm::PassInfo *, bool, llvm::PassNameParser> llvmPasses{
 int loadAndProcess(mlir::MLIRContext &context,
                    mlir::OwningModuleRef &module)
 {
-  // TODO
-  return -1;
+  std::string errorMessage;
+  auto file = openInputFile(inputFilename, &errorMessage);
+  if (!file) {
+    llvm::errs() << errorMessage << '\n';
+    return 1;
+  }
+
+  llvm::SourceMgr sourceMgr;
+  sourceMgr.AddNewSourceBuffer(std::move(file), llvm::SMLoc());
+  module = parseSourceFile(sourceMgr, &context);
+  if (!module) {
+    llvm::errs() << "could not parse input IR\n";
+    return 1;
+  }
+
+  return 0;
 }
 
 int dumpLLVMIR(mlir::ModuleOp module) {
@@ -94,7 +115,7 @@ int dumpLLVMIR(mlir::ModuleOp module) {
   auto llvmModule = mlir::translateModuleToLLVMIR(module, llvmContext);
   if (!llvmModule) {
     llvm::errs() << "Failed to emit LLVM IR\n";
-    return -1;
+    return 1;
   }
 
   llvm::InitializeNativeTarget();
@@ -106,11 +127,27 @@ int dumpLLVMIR(mlir::ModuleOp module) {
       /*targetMachine=*/nullptr);
   if (auto err = optPipeline(llvmModule.get())) {
     llvm::errs() << "Failed to optimize LLVM IR " << err << "\n";
-    return -1;
+    return 1;
   }
   // TODO alternate output stream
   llvm::errs() << *llvmModule << "\n";
   return 0;
+}
+
+static Optional<unsigned> getCommandLineOptLevel() {
+  Optional<unsigned> optLevel;
+  SmallVector<std::reference_wrapper<llvm::cl::opt<bool>>, 4> optFlags{
+      optO0, optO1, optO2, optO3};
+
+  // Determine if there is an optimization flag present.
+  for (unsigned j = 0; j < 4; ++j) {
+    auto &flag = optFlags[j].get();
+    if (flag) {
+      optLevel = j;
+      break;
+    }
+  }
+  return optLevel;
 }
 
 int main(int argc, char **argv) {
@@ -127,11 +164,40 @@ int main(int argc, char **argv) {
   cl::ParseCommandLineOptions(argc, argv, "hail compiler\n");
 
   mlir::DialectRegistry registry;
-  registry.insert<hail::optional::OptionalDialect>();
-  registry.insert<hail::control::ControlDialect>();
+  registry.insert<hail::optional::OptionalDialect,
+                  hail::control::ControlDialect,
+                  mlir::StandardOpsDialect,
+                  mlir::scf::SCFDialect,
+                  mlir::LLVM::LLVMDialect>();
   mlir::registerAllToLLVMIRTranslations(registry);
 
-  mlir::MLIRContext context(registry);
+  Optional<unsigned> optLevel = getCommandLineOptLevel();
+  SmallVector<std::reference_wrapper<llvm::cl::opt<bool>>, 4> optFlags{
+      optO0, optO1, optO2, optO3};
+  unsigned optCLIPosition = 0;
+  // Determine if there is an optimization flag present, and its CLI position
+  // (optCLIPosition).
+  for (unsigned j = 0; j < 4; ++j) {
+    auto &flag = optFlags[j].get();
+    if (flag) {
+      optCLIPosition = flag.getPosition();
+      break;
+    }
+  }
+
+  // Generate vector of pass information, plus the index at which we should
+  // insert any optimization passes in that vector (optPosition).
+  SmallVector<const llvm::PassInfo *, 4> passes;
+  unsigned optPosition = 0;
+  for (unsigned i = 0, e = llvmPasses.size(); i < e; ++i) {
+    passes.push_back(llvmPasses[i]);
+    if (optCLIPosition < llvmPasses.getPosition(i)) {
+      optPosition = i;
+      optCLIPosition = UINT_MAX; // To ensure we never insert again
+    }
+  }
+
+  MLIRContext context(registry);
 
   mlir::OwningModuleRef module;
   if (int error = loadAndProcess(context, module))
@@ -139,7 +205,7 @@ int main(int argc, char **argv) {
 
   // If we aren't exporting to non-mlir, then we are done.
   bool isOutputingMLIR = emitAction <= Action::DumpMLIRLLVM;
-  if (isOutputingMLIR) {
+  if (isOutputingMLIR || true) {
     // TODO output file
     module->dump();
     return 0;
