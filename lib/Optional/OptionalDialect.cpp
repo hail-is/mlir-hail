@@ -1,4 +1,3 @@
-
 #include "Optional/OptionalDialect.h"
 
 #include "mlir/IR/Builders.h"
