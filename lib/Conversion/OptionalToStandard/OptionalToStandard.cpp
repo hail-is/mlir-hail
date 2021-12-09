@@ -154,7 +154,7 @@ struct ConvertIfReturningOptional : public OpRewritePattern<scf::IfOp> {
 
 void hail::populateOptionalToStdConversionPatterns(RewritePatternSet &patterns) {
   patterns.add<ConvertPresentOp, ConvertMissingOp, ConvertConsumeOptOp,
-               ConvertIfReturningOptional>(patterns.getContext());
+               ConvertUndefinedOp, ConvertIfReturningOptional>(patterns.getContext());
 }
 
 void OptionalToStandardPass::runOnOperation() {
