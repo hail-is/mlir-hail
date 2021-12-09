@@ -2,6 +2,7 @@
 #define HAIL_MLIR_DIALECT_PASSDETAIL_H
 
 #include "mlir/Pass/Pass.h"
+#include "mlir/Dialect/SCF/SCF.h"
 
 namespace mlir {
 class StandardOpsDialect;

@@ -10,7 +10,7 @@ include "mlir/Pass/PassBase.td"
 def OptionalToStandard : Pass<"convert-optional-to-std"> {
   let summary = "Convert Optional dialect to Standard dialect";
   let constructor = "hail::createLowerOptionalToSTDPass()";
-  let dependentDialects = ["StandardOpsDialect"];
+  let dependentDialects = ["StandardOpsDialect", "scf::SCFDialect"];
 }
 
 #endif // HAIL_CONVERSION_PASSES
