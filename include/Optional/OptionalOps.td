@@ -7,8 +7,6 @@ include "mlir/Interfaces/InferTypeOpInterface.td"
 
 include "OptionalDialect.td"
 
-include "mlir/Interfaces/SideEffectInterfaces.td"
-
 def PresentOp : Optional_Op<"present", [NoSideEffect, DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "present";
   let description = [{
@@ -96,6 +94,46 @@ def ConsumeCoOptOp : CoOptional_Op<"consume_co_opt", [Terminator]> {
 
   let assemblyFormat = [{
     `(` $opt `,` $missing `,` $present `)` attr-dict `:` `(` type($opt) `,` type($missing) `,` type($present) `)`
+  }];
+}
+
+def PackOptionalOp : Optional_Op<"pack_opt", [NoSideEffect]> {
+  let summary = "pack_opt";
+  let description = [{
+  }];
+
+  let arguments = (ins I1:$isPresent, AnyType:$value);
+
+  let results = (outs OptionalType:$result);
+
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` functional-type(operands, $result)
+  }];
+}
+
+def UnpackOptionalOp : Optional_Op<"unpack_opt", [NoSideEffect]> {
+  let summary = "unpack_opt";
+  let description = [{
+  }];
+
+  let arguments = (ins OptionalType:$input);
+
+  let results = (outs I1:$isPresent, AnyType:$value);
+
+  let assemblyFormat = [{
+    `(` $input `)` attr-dict `:` functional-type($input, results)
+  }];
+}
+
+def UndefinedOp : Optional_Op<"undefined", [NoSideEffect]> {
+  let summary = "undefined";
+  let description = [{
+  }];
+
+  let results = (outs AnyType:$result);
+
+  let assemblyFormat = [{
+    attr-dict `:` type($result)
   }];
 }
 
