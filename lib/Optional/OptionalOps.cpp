@@ -40,12 +40,31 @@ struct RemoveConsumePresentOrMissing : public OpRewritePattern<ConsumeOptOp> {
     }
 };
 
+struct RemoveUnpackPack : public OpRewritePattern<UnpackOptionalOp> {
+  using OpRewritePattern<UnpackOptionalOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(UnpackOptionalOp unpack,
+                                PatternRewriter &rewriter) const override {
+
+    if (auto pack = unpack.input().getDefiningOp<PackOptionalOp>()) {
+      rewriter.replaceOp(unpack, pack.getOperands());
+      return success();
+    }
+
+    return failure();
+  }
+};
+
 } // namespace
 
 void ConsumeOptOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                                MLIRContext *context) {
-    results
-        .add<RemoveConsumePresentOrMissing>(context);
+    results.add<RemoveConsumePresentOrMissing>(context);
+}
+
+void UnpackOptionalOp::getCanonicalizationPatterns(RewritePatternSet &results,
+                                                   MLIRContext *context) {
+  results.add<RemoveUnpackPack>(context);
 }
 
 LogicalResult PresentOp::inferReturnTypes(MLIRContext *context,

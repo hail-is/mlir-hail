@@ -118,7 +118,9 @@ def UnpackOptionalOp : Optional_Op<"unpack_opt", [NoSideEffect]> {
 
   let arguments = (ins OptionalType:$input);
 
-  let results = (outs I1:$isPresent, AnyType:$value);
+  let results = (outs I1:$isDefined, AnyType:$value);
+
+  let hasCanonicalizer = 1;
 
   let assemblyFormat = [{
     `(` $input `)` attr-dict `:` functional-type($input, results)
