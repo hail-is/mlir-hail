@@ -74,6 +74,7 @@ cl::opt<bool> optO2{"O2",
 cl::opt<bool> optO3{"O3",
                     cl::desc("Run opt passes and codegen at O3"),
                     cl::cat(optFlags)};
+
 cl::OptionCategory clOptionsCategory{"linking options"};
 cl::list<std::string> clSharedLibs{
     "shared-libs", cl::desc("Libraries to link dynamically"),
@@ -84,6 +85,8 @@ cl::opt<std::string> outputFilename{"o",
     cl::desc("Write any output, (mlir, llvm, asm, object)")};
 cl::list<const llvm::PassInfo *, bool, llvm::PassNameParser> llvmPasses{
     cl::desc("LLVM optimizing passes to run"), cl::cat(optFlags)};
+
+unsigned optLevel = 0, optPosition = 0;
 
 int loadAndProcess(mlir::MLIRContext &context,
                    mlir::OwningModuleRef &module)
@@ -103,10 +106,38 @@ int loadAndProcess(mlir::MLIRContext &context,
     return 1;
   }
 
+  mlir::PassManager pm(&context);
+  // Apply any generic pass manager command line options and run the pipeline.
+  applyPassManagerCLOptions(pm);
+
+  bool isLowering = emitAction > DumpMLIR;
+  if (optLevel > 0 || isLowering) {
+    mlir::OpPassManager &optPM = pm.nest<mlir::FuncOp>();
+    optPM.addPass(mlir::createCanonicalizerPass());
+    optPM.addPass(mlir::createCSEPass());
+  }
+
+  if (isLowering) {
+    mlir::OpPassManager &optPM = pm.nest<mlir::FuncOp>();
+
+    // Partially lower the optional dialect with a few cleanups afterwards.
+    optPM.addPass(hail::createLowerOptionalToSTDPass());
+    optPM.addPass(mlir::createCanonicalizerPass());
+    optPM.addPass(mlir::createCSEPass());
+
+    if (optLevel > 0) {
+      optPM.addPass(mlir::createLoopFusionPass());
+    }
+
+    pm.addPass(mlir::createLowerToLLVMPass());
+
+    return mlir::failed(pm.run(*module)) ? 1 : 0;
+  }
+
   return 0;
 }
 
-int dumpLLVMIR(mlir::ModuleOp module) {
+int dumpLLVMIR(ArrayRef<const llvm::PassInfo *> passes, mlir::ModuleOp module) {
   // Register the translation to LLVM IR with the MLIR context.
   mlir::registerLLVMDialectTranslation(*module->getContext());
 
@@ -122,9 +153,8 @@ int dumpLLVMIR(mlir::ModuleOp module) {
   llvm::InitializeNativeTargetAsmPrinter();
   mlir::ExecutionEngine::setupTargetTriple(llvmModule.get());
 
-  auto optPipeline = mlir::makeOptimizingTransformer(
-      /*optLevel=*/0 /*TODO respect command line opt level*/, /*sizeLevel=*/0,
-      /*targetMachine=*/nullptr);
+  auto optPipeline = mlir::makeLLVMPassesTransformer(
+      passes, optLevel, /*targetMachine=*/nullptr, optPosition);
   if (auto err = optPipeline(llvmModule.get())) {
     llvm::errs() << "Failed to optimize LLVM IR " << err << "\n";
     return 1;
@@ -132,22 +162,6 @@ int dumpLLVMIR(mlir::ModuleOp module) {
   // TODO alternate output stream
   llvm::errs() << *llvmModule << "\n";
   return 0;
-}
-
-static Optional<unsigned> getCommandLineOptLevel() {
-  Optional<unsigned> optLevel;
-  SmallVector<std::reference_wrapper<llvm::cl::opt<bool>>, 4> optFlags{
-      optO0, optO1, optO2, optO3};
-
-  // Determine if there is an optimization flag present.
-  for (unsigned j = 0; j < 4; ++j) {
-    auto &flag = optFlags[j].get();
-    if (flag) {
-      optLevel = j;
-      break;
-    }
-  }
-  return optLevel;
 }
 
 int main(int argc, char **argv) {
@@ -171,9 +185,18 @@ int main(int argc, char **argv) {
                   mlir::LLVM::LLVMDialect>();
   mlir::registerAllToLLVMIRTranslations(registry);
 
-  Optional<unsigned> optLevel = getCommandLineOptLevel();
   SmallVector<std::reference_wrapper<llvm::cl::opt<bool>>, 4> optFlags{
       optO0, optO1, optO2, optO3};
+
+  // Determine if there is an optimization flag present.
+  for (unsigned j = 0; j < 4; ++j) {
+    auto &flag = optFlags[j].get();
+    if (flag) {
+      optLevel = j;
+      break;
+    }
+  }
+
   unsigned optCLIPosition = 0;
   // Determine if there is an optimization flag present, and its CLI position
   // (optCLIPosition).
@@ -188,7 +211,6 @@ int main(int argc, char **argv) {
   // Generate vector of pass information, plus the index at which we should
   // insert any optimization passes in that vector (optPosition).
   SmallVector<const llvm::PassInfo *, 4> passes;
-  unsigned optPosition = 0;
   for (unsigned i = 0, e = llvmPasses.size(); i < e; ++i) {
     passes.push_back(llvmPasses[i]);
     if (optCLIPosition < llvmPasses.getPosition(i)) {
@@ -205,14 +227,14 @@ int main(int argc, char **argv) {
 
   // If we aren't exporting to non-mlir, then we are done.
   bool isOutputingMLIR = emitAction <= Action::DumpMLIRLLVM;
-  if (isOutputingMLIR || true) {
+  if (isOutputingMLIR) {
     // TODO output file
     module->dump();
     return 0;
   }
 
-  if (emitAction == Action::DumpLLVMIR)
-    return dumpLLVMIR(*module);
+  if (emitAction == Action::DumpLLVMIR || true)
+    return dumpLLVMIR(passes, *module);
 
   // TODO object emission, execution
 }
