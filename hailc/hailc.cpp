@@ -44,7 +44,7 @@ enum Action {
   DumpMLIRLLVM,
   DumpLLVMIR,
   DumpObjectCode,
-  DumpAsm,
+  // TODO DumpAsm,
   RunJIT
 };
 }
@@ -58,8 +58,8 @@ static cl::opt<enum Action> emitAction(
     cl::values(clEnumValN(DumpMLIRLLVM, "mlir-llvm",
                           "output the MLIR dump after llvm lowering")),
     cl::values(clEnumValN(DumpLLVMIR, "llvm", "output the LLVM IR dump")),
-    cl::values(clEnumValN(DumpAsm, "asm", "outbut the generated assembly")),
-    cl::values(clEnumValN(DumpObjectCode, "object", "output the compiled object file")),
+    // TODO cl::values(clEnumValN(DumpAsm, "asm", "outbut the generated assembly")),
+    cl::values(clEnumValN(DumpObjectCode, "obj", "output the compiled object file")),
     cl::values(
         clEnumValN(RunJIT, "jit",
                    "JIT the code and run it by invoking the main function")));
@@ -148,11 +148,9 @@ int loadAndProcess(mlir::MLIRContext &context,
     }
 
     pm.addPass(mlir::createLowerToLLVMPass());
-
-    return mlir::failed(pm.run(*module)) ? 1 : 0;
   }
 
-  return 0;
+  return mlir::failed(pm.run(*module)) ? 1 : 0;
 }
 
 int dumpLLVMIR(ArrayRef<const llvm::PassInfo *> passes, mlir::ModuleOp module) {
@@ -243,7 +241,7 @@ int main(int argc, char **argv) {
     return 0;
   }
 
-  if (emitAction == Action::DumpLLVMIR || true)
+  if (emitAction == Action::DumpLLVMIR)
     return dumpLLVMIR(passes, *module);
 
   // TODO object emission, execution
