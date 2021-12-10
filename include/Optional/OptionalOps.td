@@ -70,7 +70,7 @@ def YieldOp : Optional_Op<"yield", [NoSideEffect, ReturnLike, Terminator,
       [{ attr-dict ($results^ `:` type($results))? }];
 }
 
-def ConstructCoOptOp : CoOptional_Op<"construct_co_opt"> {
+def ConstructCoOptOp : Optional_Op<"construct_co_opt"> {
   let summary = "construct a co-optional type";
   let description = [{
   }];
@@ -83,7 +83,7 @@ def ConstructCoOptOp : CoOptional_Op<"construct_co_opt"> {
       [{ $reg attr-dict `:` type($results) }];
 }
 
-def ConsumeCoOptOp : CoOptional_Op<"consume_co_opt", [Terminator]> {
+def ConsumeCoOptOp : Optional_Op<"consume_co_opt", [Terminator]> {
   let summary = "consume a co-optional type";
   let description = [{
   }];
@@ -101,7 +101,7 @@ def PackOptionalOp : Optional_Op<"pack_opt", [NoSideEffect]> {
   let description = [{
   }];
 
-  let arguments = (ins I1:$isPresent, AnyType:$value);
+  let arguments = (ins I1:$isPresent, Variadic<AnyType>:$values);
 
   let results = (outs OptionalType:$result);
 
@@ -117,7 +117,7 @@ def UnpackOptionalOp : Optional_Op<"unpack_opt", [NoSideEffect]> {
 
   let arguments = (ins OptionalType:$input);
 
-  let results = (outs I1:$isDefined, AnyType:$value);
+  let results = (outs I1:$isDefined, Variadic<AnyType>:$values);
 
   let hasCanonicalizer = 1;
 

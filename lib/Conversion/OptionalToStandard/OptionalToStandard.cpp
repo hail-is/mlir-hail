@@ -19,26 +19,28 @@ struct OptionalToStandardPass : public OptionalToStandardBase<OptionalToStandard
   void runOnOperation() override;
 };
 
-struct ConvertPresentOp : public OpConversionPattern<PresentOp> {
-  using OpConversionPattern<PresentOp>::OpConversionPattern;
+struct ConvertPresentOp : public OpRewritePattern<PresentOp> {
+  using OpRewritePattern<PresentOp>::OpRewritePattern;
 
-  LogicalResult matchAndRewrite(PresentOp op, ArrayRef<Value> operands,
-                                ConversionPatternRewriter &rewriter) const {
+  LogicalResult matchAndRewrite(PresentOp op, PatternRewriter &rewriter) const override {
     auto constTrue = rewriter.create<ConstantOp>(op.getLoc(), BoolAttr::get(rewriter.getContext(), true));
-    rewriter.replaceOpWithNewOp<PackOptionalOp>(op, op.getType(), constTrue.getResult(), operands[0]);
+    rewriter.replaceOpWithNewOp<PackOptionalOp>(op, op.getType(), constTrue.getResult(), op.values());
 
     return success();
   }
 };
 
-struct ConvertMissingOp : public OpConversionPattern<MissingOp> {
-  using OpConversionPattern<MissingOp>::OpConversionPattern;
+struct ConvertMissingOp : public OpRewritePattern<MissingOp> {
+  using OpRewritePattern<MissingOp>::OpRewritePattern;
 
-  LogicalResult matchAndRewrite(MissingOp op, ArrayRef<Value> operands,
-                                ConversionPatternRewriter &rewriter) const {
+  LogicalResult matchAndRewrite(MissingOp op, PatternRewriter &rewriter) const override {
     auto constFalse = rewriter.create<ConstantOp>(op.getLoc(), BoolAttr::get(rewriter.getContext(), false));
-    auto undefined = rewriter.create<UndefinedOp>(op.getLoc(), op.getType().getValueTypes()[0]);
-    rewriter.replaceOpWithNewOp<PackOptionalOp>(op, op.getType(), constFalse.getResult(), undefined);
+    SmallVector<Value, 4> values;
+    llvm::transform(op.getType().getValueTypes(), std::back_inserter(values), [&](Type type) {
+      auto undefined = rewriter.create<UndefinedOp>(op.getLoc(), type);
+      return undefined.getResult();
+    });
+    rewriter.replaceOpWithNewOp<PackOptionalOp>(op, op.getType(), constFalse.getResult(), values);
 
     return success();
   }
@@ -48,11 +50,11 @@ struct ConvertConsumeOptOp : public OpRewritePattern<ConsumeOptOp> {
   using OpRewritePattern<ConsumeOptOp>::OpRewritePattern;
 
   LogicalResult matchAndRewrite(ConsumeOptOp op,
-                                PatternRewriter &rewriter) const {
-    auto unpack = rewriter.create<UnpackOptionalOp>(op.getLoc(), rewriter.getI1Type(), op.input().getType().cast<OptionalType>().getValueTypes()[0], op.input());
+                                PatternRewriter &rewriter) const override {
+    auto unpack = rewriter.create<UnpackOptionalOp>(op.getLoc(), rewriter.getI1Type(), op.input().getType().cast<OptionalType>().getValueTypes(), op.input());
     auto ifOp = rewriter.replaceOpWithNewOp<scf::IfOp>(op, op.getResultTypes(), unpack.isDefined(), /* withElseRegion= */ true);
     rewriter.mergeBlocks(&op.missingRegion().front(), ifOp.elseBlock());
-    rewriter.mergeBlocks(&op.presentRegion().front(), ifOp.thenBlock(), unpack.value());
+    rewriter.mergeBlocks(&op.presentRegion().front(), ifOp.thenBlock(), unpack.values());
     // replace optional.yield with scf.yield
     auto elseYield = ifOp.elseBlock()->getTerminator();
     rewriter.setInsertionPointToEnd(ifOp.elseBlock());
@@ -69,7 +71,7 @@ struct ConvertUndefinedOp : public OpRewritePattern<UndefinedOp> {
   using OpRewritePattern<UndefinedOp>::OpRewritePattern;
 
   LogicalResult matchAndRewrite(UndefinedOp op,
-                                PatternRewriter &rewriter) const {
+                                PatternRewriter &rewriter) const override {
     // TODO make convert/ensure the result type is legal for LLVM
     rewriter.replaceOpWithNewOp<mlir::LLVM::UndefOp>(op, op.result().getType());
     return success();
@@ -79,7 +81,8 @@ struct ConvertUndefinedOp : public OpRewritePattern<UndefinedOp> {
 struct ConvertIfReturningOptional : public OpRewritePattern<scf::IfOp> {
   using OpRewritePattern<scf::IfOp>::OpRewritePattern;
 
-  void transferBody(Block *source, Block *dest, ArrayRef<OpResult> optResults, PatternRewriter &rewriter) const {
+  void transferBody(Block *source, Block *dest, ArrayRef<OpResult> optResults,
+                    ArrayRef<size_t> mapOptsToNewIndex, PatternRewriter &rewriter) const {
     Type i1Type = rewriter.getI1Type();
     // Move all operations to the destination block.
     rewriter.mergeBlocks(source, dest);
@@ -90,9 +93,10 @@ struct ConvertIfReturningOptional : public OpRewritePattern<scf::IfOp> {
     for (auto en : llvm::enumerate(optResults)) {
       auto i = en.index();
       auto result = en.value();
-      unsigned int newIdx = result.getResultNumber() + i;
+      unsigned int newIdx = mapOptsToNewIndex[i];
+      auto valueTypes = result.getType().cast<OptionalType>().getValueTypes();
       auto unpack = rewriter.create<UnpackOptionalOp>(yieldOp->getLoc(), i1Type,
-                                        result.getType().cast<OptionalType>().getValueTypes()[0],
+                                        valueTypes,
                                         yieldOp->getOperand(newIdx));
       yieldOp->setOperands(newIdx, 1, unpack.getResults());
     }
@@ -100,47 +104,49 @@ struct ConvertIfReturningOptional : public OpRewritePattern<scf::IfOp> {
   }
 
   LogicalResult matchAndRewrite(scf::IfOp ifOp,
-                                PatternRewriter &rewriter) const {
+                                PatternRewriter &rewriter) const override {
     Type i1Type = rewriter.getI1Type();
     // compute the set of optional results, and the new expanded result types
     SmallVector<OpResult, 4> optResults;
+    SmallVector<size_t, 4> mapOptsToNewIndex;
     SmallVector<Type, 4> newResultTypes;
     for (auto result : ifOp.getResults()) {
+      mapOptsToNewIndex.push_back(newResultTypes.size());
       Type resultType = result.getType();
       if (auto optResultType = resultType.dyn_cast<OptionalType>()) {
-        Type valueType = optResultType.getValueTypes()[0];
+        TypeRange valueTypes = optResultType.getValueTypes();
         optResults.push_back(result);
         newResultTypes.push_back(i1Type);
-        newResultTypes.push_back(valueType);
+        llvm::copy(valueTypes, std::back_inserter(newResultTypes));
       } else {
         newResultTypes.push_back(resultType);
       }
     }
+    mapOptsToNewIndex.push_back(newResultTypes.size());
 
     // Create a replacement operation with empty then and else regions.
-    auto emptyBuilder = [](OpBuilder &, Location) {};
     auto newOp = rewriter.create<scf::IfOp>(ifOp.getLoc(), newResultTypes, ifOp.condition(),
                                             /* withElseRegion = */ true);
 
     // Move the bodies and update the terminators
-    transferBody(ifOp.getBody(0), newOp.getBody(0), optResults, rewriter);
-    transferBody(ifOp.getBody(1), newOp.getBody(1), optResults, rewriter);
+    transferBody(ifOp.getBody(0), newOp.getBody(0), optResults, mapOptsToNewIndex, rewriter);
+    transferBody(ifOp.getBody(1), newOp.getBody(1), optResults, mapOptsToNewIndex, rewriter);
     rewriter.setInsertionPoint(ifOp);
 
     // Add pack operations after the if, and compute the values to replace the old if
     SmallVector<Value, 4> repResults;
-    for (auto en : llvm::enumerate(optResults)) {
-      auto i = en.index();
-      auto result = en.value();
-      unsigned int newIdx = result.getResultNumber() + i;
+    size_t newIndex = 0;
+    for (auto result : ifOp.getResults()) {
       Type resultType = result.getType();
       if (auto optResultType = resultType.dyn_cast<OptionalType>()) {
-        Type valueType = optResultType.getValueTypes()[0];
+        size_t numValues = optResultType.getNumValueTypes();
         auto pack = rewriter.create<PackOptionalOp>(ifOp->getLoc(), optResultType,
-                                                   newOp.getResult(newIdx), newOp.getResult(newIdx + 1));
+                                                    newOp.getResults().slice(newIndex, newIndex + numValues + 1));
         repResults.push_back(pack.result());
+        newIndex += numValues + 1;
       } else {
         repResults.push_back(result);
+        newIndex += 1;
       }
     }
 
