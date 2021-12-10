@@ -52,13 +52,16 @@ struct ConvertConsumeOptOp : public OpRewritePattern<ConsumeOptOp> {
   LogicalResult matchAndRewrite(ConsumeOptOp op,
                                 PatternRewriter &rewriter) const override {
     auto unpack = rewriter.create<UnpackOptionalOp>(op.getLoc(), rewriter.getI1Type(), op.input().getType().cast<OptionalType>().getValueTypes(), op.input());
-    auto ifOp = rewriter.replaceOpWithNewOp<scf::IfOp>(op, op.getResultTypes(), unpack.isDefined(), /* withElseRegion= */ true);
+    auto emptyBuilder = [](OpBuilder &, Location){};
+    auto ifOp = rewriter.replaceOpWithNewOp<scf::IfOp>(op, op.getResultTypes(), unpack.isDefined(), emptyBuilder, emptyBuilder);
     rewriter.mergeBlocks(&op.missingRegion().front(), ifOp.elseBlock());
     rewriter.mergeBlocks(&op.presentRegion().front(), ifOp.thenBlock(), unpack.values());
+
     // replace optional.yield with scf.yield
     auto elseYield = ifOp.elseBlock()->getTerminator();
     rewriter.setInsertionPointToEnd(ifOp.elseBlock());
     rewriter.replaceOpWithNewOp<scf::YieldOp>(elseYield, elseYield->getOperands());
+
     auto thenYield = ifOp.thenBlock()->getTerminator();
     rewriter.setInsertionPointToEnd(ifOp.thenBlock());
     rewriter.replaceOpWithNewOp<scf::YieldOp>(thenYield, thenYield->getOperands());
