@@ -25,15 +25,17 @@ module {
       %rand = llvm.call @lrand48() : () -> i64
       %flip_one = llvm.xor %rand, %one : i64
       %mod2 = and %flip_one, %one : i64
-      %isDefined = llvm.bitcast %mod2 : i64 to i1
+      %isDefined = llvm.trunc %mod2 : i64 to i1
       %opt = optional.pack_opt(%isDefined, %rand) : (i1, i64) -> !optional.option<i64>
 
-      optional.consume_opt(%opt) {
-        llvm.call @printf(%odd_fmt) : (!llvm.ptr<i8>) -> i32
+      %res = optional.consume_opt(%opt) {
+        %11 = llvm.call @printf(%odd_fmt) : (!llvm.ptr<i8>) -> i32
+        optional.yield %11 : i32
       }, {
       ^bb0(%v : i64):
-        llvm.call @printf(%even_fmt, %v) : (!llvm.ptr<i8>, i64) -> i32
-      } : (!optional.option<i64>) -> ()
+        %11 = llvm.call @printf(%even_fmt, %v) : (!llvm.ptr<i8>, i64) -> i32
+        optional.yield %11 : i32
+      } : (!optional.option<i64>) -> (i32)
     }
 
     return
