@@ -29,25 +29,32 @@ class Control_Op<string mnemonic, list<OpTrait> traits = []> :
 class Cont_Type<string name> : TypeDef<Control_Dialect, name>;
 
 def ContinuationType : Cont_Type<"Continuation"> {
-  let mnemonic = "continuation";
+  let mnemonic = "cont";
 
   let summary = "A continuation type";
 
-  let parameters = (ins TypeParameter<"Type", "input type">:$inputType);
+  let parameters = (ins ArrayRefParameter<"Type", "input types">:$inputTypes);
 
   let printer = [{
-    $_printer << ContinuationType::getMnemonic() << '<' << getInputType() << '>';
+    $_printer << ContinuationType::getMnemonic() << '<';
+    llvm::interleaveComma(getInputTypes(), $_printer);
+    printer << '>';
   }];
 
   let parser = [{
-    Type inputType;
-    if ($_parser.parseLess() || $_parser.parseType(inputType))
-      return ContinuationType();
+    if ($_parser.parseLess()) return Type();
 
-    if (failed($_parser.parseGreater()))
-      return ContinuationType();
+    SmallVector<Type, 1> valueTypes;
+    if (failed($_parser.parseOptionalGreater())) {
+      do {
+        Type valueType;
+        if ($_parser.parseType(valueType)) return nullptr;
+        valueTypes.push_back(valueType);
+      } while (succeeded($_parser.parseOptionalComma()));
+      if ($_parser.parseGreater()) return Type();
+    }
 
-    return ContinuationType::get($_ctxt, inputType);
+    return ContinuationType::get(context, valueTypes);
   }];
 }
 
