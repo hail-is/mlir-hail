@@ -40,21 +40,28 @@ def CoOptionalType : Optional_Type<"CoOptional"> {
   let mnemonic = "co_option";
   let summary = "a co_option type";
 
-  let parameters = (ins TypeParameter<"Type", "value type">:$valueType);
+  let parameters = (ins ArrayRefParameter<"Type", "value types">:$valueTypes);
 
   let printer = [{
-    $_printer << CoOptionalType::getMnemonic() << '<' << getValueType() << '>';
+    $_printer << CoOptionalType::getMnemonic() << '<';
+    llvm::interleaveComma(getValueTypes(), $_printer);
+    printer << '>';
   }];
 
   let parser = [{
-    Type elementType;
-    if ($_parser.parseLess() || $_parser.parseType(elementType))
-      return CoOptionalType();
+    if ($_parser.parseLess()) return Type();
 
-    if (failed($_parser.parseGreater()))
-      return CoOptionalType();
+    SmallVector<Type, 1> valueTypes;
+    if (failed($_parser.parseOptionalGreater())) {
+      do {
+        Type valueType;
+        if ($_parser.parseType(valueType)) return nullptr;
+        valueTypes.push_back(valueType);
+      } while (succeeded($_parser.parseOptionalComma()));
+      if ($_parser.parseGreater()) return Type();
+    }
 
-    return CoOptionalType::get($_ctxt, elementType);
+    return OptionalType::get(context, valueTypes);
   }];
 }
 
