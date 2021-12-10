@@ -54,6 +54,11 @@ enum Action {
 };
 }
 
+static inline llvm::Error make_string_error(const Twine &message) {
+  return llvm::make_error<llvm::StringError>(message.str(),
+                                             llvm::inconvertibleErrorCode());
+}
+
 static cl::opt<enum Action> action(
     "emit", cl::desc("Select the kind of output/behavior desired (Default: runs input with the JIT)"),
     cl::values(clEnumValN(DumpMLIR, "mlir", "output the MLIR dump")),
@@ -247,8 +252,122 @@ static int compileStatic(llvm::raw_fd_ostream &os,
   return 0;
 }
 
+static llvm::Error jitCompileAndExecute(llvm::function_ref<llvm::Error(llvm::Module *)> transformer,
+                                        mlir::ModuleOp module,
+                                        llvm::StringRef entryPoint = "main") {
+  // Much of this is taken from MLIR's JitRunner / mlir-cpu-runner
+
+  // we expect the entry point to have zero arguments
+  // TODO allow entry point to take arguments
+  auto entryPointMlirFn = module.lookupSymbol<LLVM::LLVMFuncOp>(entryPoint);
+  if (!entryPointMlirFn || entryPointMlirFn.empty())
+    return make_string_error("entry point not found");
+
+  llvm::CodeGenOpt::Level jitCodeGenOptLevel = static_cast<llvm::CodeGenOpt::Level>(optLevel);
+
+  // If shared library implements custom mlir-runner library init and destroy
+  // functions, we'll use them to register the library with the execution
+  // engine. Otherwise we'll pass library directly to the execution engine.
+  SmallVector<SmallString<256>, 4> libPaths;
+
+  // Use absolute library path so that gdb can find the symbol table.
+  transform(
+      clSharedLibs, std::back_inserter(libPaths),
+      [](std::string libPath) {
+        SmallString<256> absPath(libPath.begin(), libPath.end());
+        cantFail(llvm::errorCodeToError(llvm::sys::fs::make_absolute(absPath)));
+        return absPath;
+      });
+
+  // Libraries that we'll pass to the ExecutionEngine for loading.
+  SmallVector<StringRef, 4> executionEngineLibs;
+
+  using MlirRunnerInitFn = void (*)(llvm::StringMap<void *> &);
+  using MlirRunnerDestroyFn = void (*)();
+
+  llvm::StringMap<void *> exportSymbols;
+  SmallVector<MlirRunnerDestroyFn> destroyFns;
+
+  // Handle libraries that do support mlir-runner init/destroy callbacks.
+  for (auto &libPath : libPaths) {
+    auto lib = llvm::sys::DynamicLibrary::getPermanentLibrary(libPath.c_str());
+    void *initSym = lib.getAddressOfSymbol("__mlir_runner_init");
+    void *destroySim = lib.getAddressOfSymbol("__mlir_runner_destroy");
+
+    // Library does not support mlir runner, load it with ExecutionEngine.
+    if (!initSym || !destroySim) {
+      executionEngineLibs.push_back(libPath);
+      continue;
+    }
+
+    auto initFn = reinterpret_cast<MlirRunnerInitFn>(initSym);
+    initFn(exportSymbols);
+
+    auto destroyFn = reinterpret_cast<MlirRunnerDestroyFn>(destroySim);
+    destroyFns.push_back(destroyFn);
+  }
+
+  // Build a runtime symbol map from the config and exported symbols.
+  auto runtimeSymbolMap = [&](llvm::orc::MangleAndInterner interner) {
+    auto symbolMap = llvm::orc::SymbolMap();
+    for (auto &exportSymbol : exportSymbols)
+      symbolMap[interner(exportSymbol.getKey())] =
+          llvm::JITEvaluatedSymbol::fromPointer(exportSymbol.getValue());
+    return symbolMap;
+  };
+
+  auto expectedEngine = mlir::ExecutionEngine::create(
+      module, /*llvmModuleBuilder=*/nullptr, transformer, jitCodeGenOptLevel,
+      executionEngineLibs);
+  if (!expectedEngine)
+    return expectedEngine.takeError();
+
+  auto engine = std::move(*expectedEngine);
+  engine->registerSymbols(runtimeSymbolMap);
+
+  auto expectedFPtr = engine->lookup(entryPoint);
+  if (!expectedFPtr)
+    return expectedFPtr.takeError();
+
+  if (dumpJitCode)
+    engine->dumpToObjectFile(outputFilename);
+  void *empty = nullptr;
+  void (*fptr)(void**) = *expectedFPtr;
+  (*fptr)(&empty);
+
+  // Run all dynamic library destroy callbacks to prepare for the shutdown.
+  llvm::for_each(destroyFns, [](MlirRunnerDestroyFn destroy) { destroy(); });
+
+  return llvm::Error::success();
+}
+
 static int runJIT(ArrayRef<const llvm::PassInfo *> passes, mlir::ModuleOp module) {
-  return 1;
+  auto targetMachineBuilder = llvm::orc::JITTargetMachineBuilder::detectHost();
+  if (!targetMachineBuilder) {
+    llvm::errs() << "Failed to create a JITTargetMachineBuilder for the host\n";
+    return EXIT_FAILURE;
+  }
+
+  auto targetMachine = targetMachineBuilder->createTargetMachine();
+  if (!targetMachine) {
+    llvm::errs() << "Failed to create a TargetMachine for the host\n";
+    return EXIT_FAILURE;
+  }
+
+  auto transformer = mlir::makeLLVMPassesTransformer(passes, optLevel, targetMachine->get(), optPosition);
+
+  auto error = jitCompileAndExecute(transformer, module);
+
+  int exitCode = EXIT_SUCCESS;
+  llvm::handleAllErrors(std::move(error),
+                        [&exitCode](const llvm::ErrorInfoBase &info) {
+                          llvm::errs() << "Error: ";
+                          info.log(llvm::errs());
+                          llvm::errs() << '\n';
+                          exitCode = EXIT_FAILURE;
+                        });
+
+  return EXIT_SUCCESS;
 }
 
 int main(int argc, char **argv) {
