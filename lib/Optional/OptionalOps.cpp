@@ -75,6 +75,20 @@ struct RemoveUnpackPack : public OpRewritePattern<UnpackOptionalOp> {
   }
 };
 
+struct RemoveCoOptToOptConversion : public OpRewritePattern<CoOptToOptOp> {
+  using OpRewritePattern<CoOptToOptOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(CoOptToOptOp op,
+                                PatternRewriter &rewriter) const override {
+    if (auto optToCoOpt = op.input().getDefiningOp<OptToCoOptOp>()) {
+      rewriter.replaceOp(op, optToCoOpt.input());
+      return success();
+    }
+
+    return failure();
+  }
+};
+
 } // namespace
 
 void ConsumeOptOp::getCanonicalizationPatterns(RewritePatternSet &results,
@@ -90,6 +104,11 @@ void UnpackOptionalOp::getCanonicalizationPatterns(RewritePatternSet &results,
 void ConsumeCoOptOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                                  MLIRContext *context) {
     results.add<RemoveConstructConsumeOpt>(context);
+}
+
+void CoOptToOptOp::getCanonicalizationPatterns(RewritePatternSet &results,
+                                               MLIRContext *context) {
+    results.add<RemoveCoOptToOptConversion>(context);
 }
 
 static LogicalResult verify(ConsumeOptOp op) {
