@@ -37,7 +37,7 @@ struct ConvertMissingOp : public OpConversionPattern<MissingOp> {
   LogicalResult matchAndRewrite(MissingOp op, ArrayRef<Value> operands,
                                 ConversionPatternRewriter &rewriter) const {
     auto constFalse = rewriter.create<ConstantOp>(op.getLoc(), BoolAttr::get(rewriter.getContext(), false));
-    auto undefined = rewriter.create<UndefinedOp>(op.getLoc(), op.getType().getValueType());
+    auto undefined = rewriter.create<UndefinedOp>(op.getLoc(), op.getType().getValueTypes()[0]);
     rewriter.replaceOpWithNewOp<PackOptionalOp>(op, op.getType(), constFalse.getResult(), undefined);
 
     return success();
@@ -49,7 +49,7 @@ struct ConvertConsumeOptOp : public OpRewritePattern<ConsumeOptOp> {
 
   LogicalResult matchAndRewrite(ConsumeOptOp op,
                                 PatternRewriter &rewriter) const {
-    auto unpack = rewriter.create<UnpackOptionalOp>(op.getLoc(), rewriter.getI1Type(), op.input().getType().cast<OptionalType>().getValueType(), op.input());
+    auto unpack = rewriter.create<UnpackOptionalOp>(op.getLoc(), rewriter.getI1Type(), op.input().getType().cast<OptionalType>().getValueTypes()[0], op.input());
     auto ifOp = rewriter.replaceOpWithNewOp<scf::IfOp>(op, op.getResultTypes(), unpack.isDefined(), /* withElseRegion= */ true);
     rewriter.mergeBlocks(&op.missingRegion().front(), ifOp.elseBlock());
     rewriter.mergeBlocks(&op.presentRegion().front(), ifOp.thenBlock(), unpack.value());
@@ -92,7 +92,7 @@ struct ConvertIfReturningOptional : public OpRewritePattern<scf::IfOp> {
       auto result = en.value();
       unsigned int newIdx = result.getResultNumber() + i;
       auto unpack = rewriter.create<UnpackOptionalOp>(yieldOp->getLoc(), i1Type,
-                                        result.getType().cast<OptionalType>().getValueType(),
+                                        result.getType().cast<OptionalType>().getValueTypes()[0],
                                         yieldOp->getOperand(newIdx));
       yieldOp->setOperands(newIdx, 1, unpack.getResults());
     }
@@ -108,7 +108,7 @@ struct ConvertIfReturningOptional : public OpRewritePattern<scf::IfOp> {
     for (auto result : ifOp.getResults()) {
       Type resultType = result.getType();
       if (auto optResultType = resultType.dyn_cast<OptionalType>()) {
-        Type valueType = optResultType.getValueType();
+        Type valueType = optResultType.getValueTypes()[0];
         optResults.push_back(result);
         newResultTypes.push_back(i1Type);
         newResultTypes.push_back(valueType);
@@ -135,7 +135,7 @@ struct ConvertIfReturningOptional : public OpRewritePattern<scf::IfOp> {
       unsigned int newIdx = result.getResultNumber() + i;
       Type resultType = result.getType();
       if (auto optResultType = resultType.dyn_cast<OptionalType>()) {
-        Type valueType = optResultType.getValueType();
+        Type valueType = optResultType.getValueTypes()[0];
         auto pack = rewriter.create<PackOptionalOp>(ifOp->getLoc(), optResultType,
                                                    newOp.getResult(newIdx), newOp.getResult(newIdx + 1));
         repResults.push_back(pack.result());

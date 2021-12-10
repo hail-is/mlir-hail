@@ -68,11 +68,10 @@ void UnpackOptionalOp::getCanonicalizationPatterns(RewritePatternSet &results,
 }
 
 static LogicalResult verify(ConsumeOptOp op) {
-    auto inputTypes = op.input().getType().cast<OptionalType>().getValueType();
+    auto inputTypes = op.input().getType().cast<OptionalType>().getValueTypes();
     auto presentTypes = op.presentBlock()->getArgumentTypes();
 
-    // TODO variadic type for option data
-    if (inputTypes != presentTypes[0])
+    if (inputTypes != presentTypes)
         return op.emitOpError(
             "expect the presentBlock's arguments to have the same types "
             "as the consumed option value");

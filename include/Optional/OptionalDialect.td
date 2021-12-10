@@ -28,28 +28,9 @@ class Optional_Op<string mnemonic, list<OpTrait> traits = []> :
 
 class Optional_Type<string name> : TypeDef<Optional_Dialect, name>;
 
-def OptionalType : Optional_Type<"Optional"> {
-  let mnemonic = "option";
-
-  let summary = "an optional type";
-
-  let parameters = (ins TypeParameter<"Type", "value type">:$valueType);
-
-  let printer = [{
-    $_printer << OptionalType::getMnemonic() << '<' << getValueType() << '>';
-  }];
-
-  let parser = [{
-    Type elementType;
-    if ($_parser.parseLess() || $_parser.parseType(elementType))
-      return OptionalType();
-
-    if (failed($_parser.parseGreater()))
-      return OptionalType();
-
-    return OptionalType::get($_ctxt, elementType);
-  }];
-}
+def OptionalType :
+    DialectType<Optional_Dialect, CPred<"$_self.isa<OptionalType>()">,
+                "Option type", "::hail::optional::OptionalType">;
 
 //===----------------------------------------------------------------------===//
 // Base optional operation definition.
