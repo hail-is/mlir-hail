@@ -33,14 +33,7 @@ def OptionalType :
                 "Option type", "::hail::optional::OptionalType">;
 
 //===----------------------------------------------------------------------===//
-// Base optional operation definition.
-//===----------------------------------------------------------------------===//
-
-class CoOptional_Op<string mnemonic, list<OpTrait> traits = []> :
-    Op<Optional_Dialect, mnemonic, traits>;
-
-//===----------------------------------------------------------------------===//
-// Optional type definition.
+// CoOptional type definition.
 //===----------------------------------------------------------------------===//
 
 def CoOptionalType : Optional_Type<"CoOptional"> {
