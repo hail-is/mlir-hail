@@ -92,6 +92,14 @@ void OptionalType::print(DialectAsmPrinter &printer) const {
   printer << '>';
 }
 
+CoOptionalType OptionalType::asCoOptional() const {
+  return CoOptionalType::get(getContext(), getValueTypes());
+}
+
+OptionalType CoOptionalType::asOptional() const {
+  return OptionalType::get(getContext(), getValueTypes());
+}
+
 Type OptionalDialect::parseType(DialectAsmParser &parser) const {
   llvm::SMLoc typeLoc = parser.getCurrentLocation();
   MLIRContext *context = parser.getBuilder().getContext();

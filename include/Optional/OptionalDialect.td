@@ -61,7 +61,11 @@ def CoOptionalType : Optional_Type<"CoOptional"> {
       if ($_parser.parseGreater()) return Type();
     }
 
-    return OptionalType::get(context, valueTypes);
+    return CoOptionalType::get(context, valueTypes);
+  }];
+
+  let extraClassDeclaration = [{
+    OptionalType asOptional() const;
   }];
 }
 
