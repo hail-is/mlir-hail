@@ -77,7 +77,7 @@ def ConstructCoOptOp : CoOptional_Op<"construct_co_opt"> {
 
   let results = (outs CoOptionalType:$results);
 
-  let regions = (region AnyRegion:$reg);
+  let regions = (region SizedRegion<1>:$reg);
 
   let assemblyFormat =
       [{ $reg attr-dict `:` type($results) }];
@@ -90,6 +90,8 @@ def ConsumeCoOptOp : CoOptional_Op<"consume_co_opt", [Terminator]> {
 
   // TODO Make $missing and $present `ContinuationType`s
   let arguments = (ins CoOptionalType:$opt, AnyType:$missing, AnyType:$present);
+
+  let hasCanonicalizer = 1;
 
   let assemblyFormat = [{
     `(` $opt `,` $missing `,` $present `)` attr-dict `:` `(` type($opt) `,` type($missing) `,` type($present) `)`

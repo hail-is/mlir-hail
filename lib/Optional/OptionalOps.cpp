@@ -40,6 +40,26 @@ struct RemoveConsumePresentOrMissing : public OpRewritePattern<ConsumeOptOp> {
     }
 };
 
+struct RemoveConstructConsumeOpt : public OpRewritePattern<ConsumeCoOptOp> {
+  using OpRewritePattern<ConsumeCoOptOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(ConsumeCoOptOp op,
+                                PatternRewriter &rewriter) const override {
+      if (auto construct = op.opt().getDefiningOp<ConstructCoOptOp>()) {
+        if (!op.opt().hasOneUse()) {
+            return failure();
+        }
+        Block *block = &construct.reg().front();
+        rewriter.mergeBlockBefore(block, op, op.getOperands().slice(1, 2));
+        rewriter.eraseOp(op);
+        rewriter.eraseOp(construct);
+        return success();
+      }
+
+      return failure();
+  };
+};
+
 struct RemoveUnpackPack : public OpRewritePattern<UnpackOptionalOp> {
   using OpRewritePattern<UnpackOptionalOp>::OpRewritePattern;
 
@@ -65,6 +85,11 @@ void ConsumeOptOp::getCanonicalizationPatterns(RewritePatternSet &results,
 void UnpackOptionalOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                                    MLIRContext *context) {
   results.add<RemoveUnpackPack>(context);
+}
+
+void ConsumeCoOptOp::getCanonicalizationPatterns(RewritePatternSet &results,
+                                                 MLIRContext *context) {
+    results.add<RemoveConstructConsumeOpt>(context);
 }
 
 static LogicalResult verify(ConsumeOptOp op) {
