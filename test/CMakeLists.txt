@@ -9,8 +9,7 @@ if(LLVM_LIT)
 
     find_program(FILE_CHECK "FileCheck" HINTS ${LLVM_TEST_BINARY_DIR} REQUIRED)
 
-    add_custom_target(check COMMAND "${CMAKE_COMMAND}" -E env "PATH=$ENV{PATH}:${LLVM_TEST_BINARY_DIR}"
-        "${LLVM_LIT}" "${CMAKE_CURRENT_BINARY_DIR}" -v
+    add_custom_target(check COMMAND "${LLVM_LIT}" "${CMAKE_CURRENT_BINARY_DIR}" -v
         DEPENDS hail-opt)
 else()
     message(WARNING "llvm-lit not found, disabling tests")
