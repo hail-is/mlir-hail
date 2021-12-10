@@ -28,14 +28,12 @@ module {
       %isDefined = llvm.trunc %mod2 : i64 to i1
       %opt = optional.pack_opt(%isDefined, %rand) : (i1, i64) -> !optional.option<i64>
 
-      %res = optional.consume_opt(%opt) {
+      optional.consume_opt(%opt) {
         %11 = llvm.call @printf(%odd_fmt) : (!llvm.ptr<i8>) -> i32
-        optional.yield %11 : i32
       }, {
       ^bb0(%v : i64):
         %11 = llvm.call @printf(%even_fmt, %v) : (!llvm.ptr<i8>, i64) -> i32
-        optional.yield %11 : i32
-      } : (!optional.option<i64>) -> (i32)
+      } : (!optional.option<i64>) -> ()
     }
 
     return
