@@ -4,27 +4,54 @@
 include "mlir/Interfaces/ControlFlowInterfaces.td"
 include "ControlDialect.td"
 
-def DefCont : Control_Op<"define_cont", []> {
+def DefContOp : Control_Op<"defcont", []> {
   let summary = "Define a continuation";
   let description = [{
   }];
 
   let results = (outs ContinuationType:$result);
 
-  let regions = (region SizedRegion<1>:$contRegion);
+  let regions = (region SizedRegion<1>:$bodyRegion);
 
-  let assemblyFormat = [{ $contRegion attr-dict `:` type($result) }];
+  let verifier = [{ return ::verify(*this); }];
+
+  let assemblyFormat = [{ attr-dict `:` type($result) $bodyRegion }];
+
+  let extraClassDeclaration = [{
+    mlir::Block *body();
+  }];
 }
 
-def ApplyCont : Control_Op<"apply_cont", [Terminator]> {
+def ApplyContOp : Control_Op<"apply", [Terminator]> {
   let summary = "Apply a continuation";
   let description = [{
   }];
 
-  let arguments = (ins ContinuationType:$k, Variadic<AnyType>:$values);
+  let arguments = (ins ContinuationType:$continuation, Variadic<AnyType>:$values);
+
+  let verifier = [{ return ::verify(*this); }];
 
   let assemblyFormat = [{
-    `(` $k `,` $values `)` attr-dict `:` `(` type($k) `,` type($values) `)`
+    `(` $continuation `,` $values `)` attr-dict `:` `(` type($continuation) `,` type($values) `)`
+  }];
+}
+
+def CallCCOp : Control_Op<"callcc", []> {
+  let summary = "Call with current continuation";
+  let description = [{
+  }];
+
+  let results = (outs Variadic<AnyType>:$results);
+  let regions = (region SizedRegion<1>:$bodyRegion);
+
+  let verifier = [{ return ::verify(*this); }];
+
+  let assemblyFormat = [{
+    attr-dict `:` `(` type($results) `)` $bodyRegion
+  }];
+
+  let extraClassDeclaration = [{
+    mlir::Block *body();
   }];
 }
 
