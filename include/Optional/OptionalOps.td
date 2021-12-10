@@ -70,6 +70,32 @@ def YieldOp : Optional_Op<"yield", [NoSideEffect, ReturnLike, Terminator,
       [{ attr-dict ($results^ `:` type($results))? }];
 }
 
+def OptToCoOpt : Optional_Op<"opt_to_co_opt",
+    [TypesMatchWith<"optional type parameters match co-optional's",
+                   "input", "result",
+                   "$_self.cast<OptionalType>().asCoOptional()">]> {
+  let summary = "convert an optional to a co-optional";
+  let description = [{ TODO }];
+
+  let arguments = (ins OptionalType:$input);
+  let results = (outs CoOptionalType:$result);
+
+  let assemblyFormat = [{ `(` $input `:` type($input) `)` attr-dict }];
+}
+
+def CoOptToOpt : Optional_Op<"co_opt_to_opt",
+    [TypesMatchWith<"optional type parameters match co-optional's",
+                   "input", "result",
+                   "$_self.cast<CoOptionalType>().asOptional()">]> {
+  let summary = "convert an co-optional to an optional";
+  let description = [{ TODO }];
+
+  let arguments = (ins CoOptionalType:$input);
+  let results = (outs OptionalType:$result);
+
+  let assemblyFormat = [{ `(` $input `:` type($input) `)` attr-dict }];
+}
+
 def ConstructCoOptOp : Optional_Op<"construct_co_opt"> {
   let summary = "construct a co-optional type";
   let description = [{

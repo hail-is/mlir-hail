@@ -17,6 +17,7 @@ class DialectAsmPrinter;
 
 namespace hail {
 namespace optional {
+class CoOptionalType;
 
 namespace detail {
 struct OptionalTypeStorage;
@@ -47,6 +48,8 @@ public:
   static ::mlir::Type parse(::mlir::MLIRContext *context, ::mlir::DialectAsmParser &parser);
 
   void print(::mlir::DialectAsmPrinter &printer) const;
+
+  CoOptionalType asCoOptional() const;
 };
 
 } // namespace optional
