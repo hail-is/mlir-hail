@@ -188,21 +188,13 @@ int main(int argc, char **argv) {
   SmallVector<std::reference_wrapper<llvm::cl::opt<bool>>, 4> optFlags{
       optO0, optO1, optO2, optO3};
 
-  // Determine if there is an optimization flag present.
-  for (unsigned j = 0; j < 4; ++j) {
-    auto &flag = optFlags[j].get();
-    if (flag) {
-      optLevel = j;
-      break;
-    }
-  }
-
   unsigned optCLIPosition = 0;
   // Determine if there is an optimization flag present, and its CLI position
   // (optCLIPosition).
   for (unsigned j = 0; j < 4; ++j) {
     auto &flag = optFlags[j].get();
     if (flag) {
+      optLevel = j;
       optCLIPosition = flag.getPosition();
       break;
     }
