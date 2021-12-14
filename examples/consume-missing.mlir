@@ -1,3 +1,4 @@
+// RUN: hail-opt %s
 func @consume_missing(%b: i1, %i: i32) -> i32 {
   %0 = optional.missing : !optional.option<i32, i64>
   %1 = optional.consume_opt(%0) {
