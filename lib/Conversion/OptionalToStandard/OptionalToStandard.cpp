@@ -3,6 +3,7 @@
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/SCF/SCF.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Transforms/DialectConversion.h"
 
@@ -19,42 +20,78 @@ struct OptionalToStandardPass : public OptionalToStandardBase<OptionalToStandard
   void runOnOperation() override;
 };
 
-struct ConvertPresentOp : public OpRewritePattern<PresentOp> {
-  using OpRewritePattern<PresentOp>::OpRewritePattern;
+Value packOptional(PatternRewriter &rewriter, Location loc, OptionalType type, Value isPresent, ValueRange values) {
+  assert(type.getValueTypes() == values.getTypes());
+  llvm::SmallVector<Value, 1> results;
+  llvm::SmallVector<Value, 2> toCast;
+  toCast.reserve(values.size() + 1);
+  toCast.push_back(isPresent);
+  toCast.append(values.begin(), values.end());
+  rewriter.createOrFold<UnrealizedConversionCastOp>(results, loc, type, toCast);
+  return results[0];
+}
 
-  LogicalResult matchAndRewrite(PresentOp op, PatternRewriter &rewriter) const override {
+struct LoweredOptional {
+  explicit LoweredOptional(OptionalType type) {
+    operands.reserve(type.getNumValueTypes() + 1);
+  };
+  Value isDefined() { return operands[0]; };
+  ValueRange values() { return ValueRange(operands).drop_front(1); };
+
+  llvm::SmallVector<Value, 2> operands{};
+};
+
+LoweredOptional unpackOptional(ConversionPatternRewriter &rewriter, Location loc, Value optional) {
+  auto type = optional.getType().cast<OptionalType>();
+  llvm::SmallVector<Type, 2> resultTypes;
+  resultTypes.reserve(type.getNumValueTypes() + 1);
+  LoweredOptional result{type};
+  resultTypes.push_back(rewriter.getI1Type());
+  resultTypes.append(type.getValueTypes().begin(), type.getValueTypes().end());
+  rewriter.createOrFold<UnrealizedConversionCastOp>(result.operands, loc, resultTypes, optional);
+  return result;
+}
+
+struct ConvertPresentOp : public OpConversionPattern<PresentOp> {
+  using OpConversionPattern<PresentOp>::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(PresentOp op, ArrayRef<Value> operands,
+                                ConversionPatternRewriter &rewriter) const override {
     auto constTrue = rewriter.create<ConstantOp>(op.getLoc(), BoolAttr::get(rewriter.getContext(), true));
-    rewriter.replaceOpWithNewOp<PackOptionalOp>(op, op.getType(), constTrue.getResult(), op.values());
+    Value newResult = packOptional(rewriter, op.getLoc(), op.getType(), constTrue, operands);
+    rewriter.replaceOp(op, newResult);
 
     return success();
   }
 };
 
-struct ConvertMissingOp : public OpRewritePattern<MissingOp> {
-  using OpRewritePattern<MissingOp>::OpRewritePattern;
+struct ConvertMissingOp : public OpConversionPattern<MissingOp> {
+  using OpConversionPattern<MissingOp>::OpConversionPattern;
 
-  LogicalResult matchAndRewrite(MissingOp op, PatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(MissingOp op, ArrayRef<Value> operands,
+                                ConversionPatternRewriter &rewriter) const override {
     auto constFalse = rewriter.create<ConstantOp>(op.getLoc(), BoolAttr::get(rewriter.getContext(), false));
     SmallVector<Value, 4> values;
     llvm::transform(op.getType().getValueTypes(), std::back_inserter(values), [&](Type type) {
       auto undefined = rewriter.create<UndefinedOp>(op.getLoc(), type);
       return undefined.getResult();
     });
-    rewriter.replaceOpWithNewOp<PackOptionalOp>(op, op.getType(), constFalse.getResult(), values);
+    Value newResult = packOptional(rewriter, op.getLoc(), op.getType(), constFalse, values);
+    rewriter.replaceOp(op, newResult);
 
     return success();
   }
 };
 
-struct ConvertConsumeOptOp : public OpRewritePattern<ConsumeOptOp> {
-  using OpRewritePattern<ConsumeOptOp>::OpRewritePattern;
+struct ConvertConsumeOptOp : public OpConversionPattern<ConsumeOptOp> {
+  using OpConversionPattern<ConsumeOptOp>::OpConversionPattern;
 
-  LogicalResult matchAndRewrite(ConsumeOptOp op,
-                                PatternRewriter &rewriter) const override {
-    auto unpack = rewriter.create<UnpackOptionalOp>(op.getLoc(), rewriter.getI1Type(), op.input().getType().cast<OptionalType>().getValueTypes(), op.input());
+  LogicalResult matchAndRewrite(ConsumeOptOp op, ArrayRef<Value> operands,
+                                ConversionPatternRewriter &rewriter) const override {
+    LoweredOptional unpack = unpackOptional(rewriter, op.getLoc(), operands[0]);
     auto emptyBuilder = [](OpBuilder &, Location){};
     auto ifOp = rewriter.replaceOpWithNewOp<scf::IfOp>(op, op.getResultTypes(), unpack.isDefined(), emptyBuilder, emptyBuilder);
-    rewriter.mergeBlocks(&op.missingRegion().front(), ifOp.elseBlock());
+    rewriter.mergeBlocks(&op.missingRegion().front(), ifOp.elseBlock(), {});
     rewriter.mergeBlocks(&op.presentRegion().front(), ifOp.thenBlock(), unpack.values());
 
     // replace optional.yield with scf.yield
@@ -70,44 +107,22 @@ struct ConvertConsumeOptOp : public OpRewritePattern<ConsumeOptOp> {
   }
 };
 
-struct ConvertUndefinedOp : public OpRewritePattern<UndefinedOp> {
-  using OpRewritePattern<UndefinedOp>::OpRewritePattern;
+struct ConvertUndefinedOp : public OpConversionPattern<UndefinedOp> {
+  using OpConversionPattern<UndefinedOp>::OpConversionPattern;
 
-  LogicalResult matchAndRewrite(UndefinedOp op,
-                                PatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(UndefinedOp op, ArrayRef<Value> operands,
+                                ConversionPatternRewriter &rewriter) const override {
     // TODO make convert/ensure the result type is legal for LLVM
     rewriter.replaceOpWithNewOp<mlir::LLVM::UndefOp>(op, op.result().getType());
     return success();
   }
 };
 
-struct ConvertIfReturningOptional : public OpRewritePattern<scf::IfOp> {
-  using OpRewritePattern<scf::IfOp>::OpRewritePattern;
+struct ConvertIfReturningOptional : public OpConversionPattern<scf::IfOp> {
+  using OpConversionPattern<scf::IfOp>::OpConversionPattern;
 
-  void transferBody(Block *source, Block *dest, ArrayRef<OpResult> optResults,
-                    ArrayRef<size_t> mapOptsToNewIndex, PatternRewriter &rewriter) const {
-    Type i1Type = rewriter.getI1Type();
-    // Move all operations to the destination block.
-    rewriter.mergeBlocks(source, dest);
-    // Insert unpack operations and update the yielded results
-    auto yieldOp = cast<scf::YieldOp>(dest->getTerminator());
-    rewriter.setInsertionPoint(yieldOp);
-    rewriter.startRootUpdate(yieldOp);
-    for (auto en : llvm::enumerate(optResults)) {
-      auto i = en.index();
-      auto result = en.value();
-      unsigned int newIdx = mapOptsToNewIndex[i];
-      auto valueTypes = result.getType().cast<OptionalType>().getValueTypes();
-      auto unpack = rewriter.create<UnpackOptionalOp>(yieldOp->getLoc(), i1Type,
-                                        valueTypes,
-                                        yieldOp->getOperand(newIdx));
-      yieldOp->setOperands(newIdx, 1, unpack.getResults());
-    }
-    rewriter.finalizeRootUpdate(yieldOp);
-  }
-
-  LogicalResult matchAndRewrite(scf::IfOp ifOp,
-                                PatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(scf::IfOp ifOp, ArrayRef<Value> operands,
+                                ConversionPatternRewriter &rewriter) const override {
     Type i1Type = rewriter.getI1Type();
     // compute the set of optional results, and the new expanded result types
     SmallVector<OpResult, 4> optResults;
@@ -128,13 +143,11 @@ struct ConvertIfReturningOptional : public OpRewritePattern<scf::IfOp> {
     mapOptsToNewIndex.push_back(newResultTypes.size());
 
     // Create a replacement operation with empty then and else regions.
-    auto newOp = rewriter.create<scf::IfOp>(ifOp.getLoc(), newResultTypes, ifOp.condition(),
-                                            /* withElseRegion = */ true);
-
-    // Move the bodies and update the terminators
-    transferBody(ifOp.getBody(0), newOp.getBody(0), optResults, mapOptsToNewIndex, rewriter);
-    transferBody(ifOp.getBody(1), newOp.getBody(1), optResults, mapOptsToNewIndex, rewriter);
-    rewriter.setInsertionPoint(ifOp);
+    auto emptyBuilder = [](OpBuilder &, Location){};
+    auto newOp = rewriter.create<scf::IfOp>(ifOp.getLoc(), newResultTypes, operands[0],
+                                            emptyBuilder, emptyBuilder);
+    rewriter.mergeBlocks(ifOp.thenBlock(), newOp.thenBlock(), {});
+    rewriter.mergeBlocks(ifOp.elseBlock(), newOp.elseBlock(), {});
 
     // Add pack operations after the if, and compute the values to replace the old if
     SmallVector<Value, 4> repResults;
@@ -143,9 +156,9 @@ struct ConvertIfReturningOptional : public OpRewritePattern<scf::IfOp> {
       Type resultType = result.getType();
       if (auto optResultType = resultType.dyn_cast<OptionalType>()) {
         size_t numValues = optResultType.getNumValueTypes();
-        auto pack = rewriter.create<PackOptionalOp>(ifOp->getLoc(), optResultType,
+        auto pack = rewriter.create<UnrealizedConversionCastOp>(ifOp->getLoc(), optResultType,
                                                     newOp.getResults().slice(newIndex, newIndex + numValues + 1));
-        repResults.push_back(pack.result());
+        repResults.push_back(pack.getResult(0));
         newIndex += numValues + 1;
       } else {
         repResults.push_back(result);
@@ -160,11 +173,37 @@ struct ConvertIfReturningOptional : public OpRewritePattern<scf::IfOp> {
   }
 };
 
+struct ConvertSCFYieldReturningOptional : public OpConversionPattern<scf::YieldOp> {
+  using OpConversionPattern<scf::YieldOp>::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(scf::YieldOp op, ArrayRef<Value> operands,
+                                ConversionPatternRewriter &rewriter) const override {
+    SmallVector<Value, 4> newOperands;
+    for (auto operand : operands) {
+      Type type = operand.getType();
+      if (auto optType = type.dyn_cast<OptionalType>()) {
+        TypeRange valueTypes = optType.getValueTypes();
+        LoweredOptional unpack = unpackOptional(rewriter, op->getLoc(), operand);
+        newOperands.push_back(unpack.isDefined());
+        newOperands.append(unpack.values().begin(), unpack.values().end());
+      } else {
+        newOperands.push_back(operand);
+      }
+    }
+    rewriter.startRootUpdate(op);
+    op->setOperands(newOperands);
+    rewriter.finalizeRootUpdate(op);
+
+    return success();
+  }
+};
+
 }
 
 void hail::populateOptionalToStdConversionPatterns(RewritePatternSet &patterns) {
   patterns.add<ConvertPresentOp, ConvertMissingOp, ConvertConsumeOptOp,
-               ConvertUndefinedOp, ConvertIfReturningOptional>(patterns.getContext());
+               ConvertIfReturningOptional,
+               ConvertSCFYieldReturningOptional>(patterns.getContext());
 }
 
 void OptionalToStandardPass::runOnOperation() {
@@ -172,10 +211,16 @@ void OptionalToStandardPass::runOnOperation() {
   populateOptionalToStdConversionPatterns(patterns);
   // Configure conversion to lower out .... Anything else is fine.
   ConversionTarget target(getContext());
-  target.addIllegalOp<PresentOp, MissingOp, ConsumeOptOp, UndefinedOp>();
+  target.addIllegalOp<PresentOp, MissingOp, ConsumeOptOp>();
   target.addDynamicallyLegalOp<scf::IfOp>([](scf::IfOp op) {
     for (auto result : op.results()) {
       if (result.getType().isa<OptionalType>()) return false;
+    }
+    return true;
+  });
+  target.addDynamicallyLegalOp<scf::YieldOp>([](scf::YieldOp op) {
+    for (auto operand : op.getOperands()) {
+      if (operand.getType().isa<OptionalType>()) return false;
     }
     return true;
   });
