@@ -1,3 +1,4 @@
+// RUN: hail-opt %s
 func @consume_present(%i1: i32, %i2: i64) -> i32 {
   %0 = optional.present(%i1, %i2) : (i32, i64) -> !optional.option<i32, i64>
   %1 = optional.consume_opt(%0) {

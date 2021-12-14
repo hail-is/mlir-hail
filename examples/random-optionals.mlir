@@ -1,3 +1,4 @@
+// RUN: hail-opt %s
 module {
   llvm.mlir.global internal constant @even_fmt("Even value :-) (%ld)\0A\00")
   llvm.mlir.global internal constant @odd_msg("Odd value >:|\0A\00")
@@ -26,7 +27,7 @@ module {
       %flip_one = llvm.xor %rand, %one : i64
       %mod2 = and %flip_one, %one : i64
       %isDefined = llvm.trunc %mod2 : i64 to i1
-      %opt = optional.pack_opt(%isDefined, %rand) : (i1, i64) -> !optional.option<i64>
+      %opt = unrealized_conversion_cast %isDefined, %rand : i1, i64 to !optional.option<i64>
 
       optional.consume_opt(%opt) {
         %11 = llvm.call @printf(%odd_fmt) : (!llvm.ptr<i8>) -> i32
