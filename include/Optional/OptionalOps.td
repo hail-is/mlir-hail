@@ -130,36 +130,6 @@ def ConsumeCoOptOp : Optional_Op<"consume_co_opt", [Terminator]> {
   }];
 }
 
-def PackOptionalOp : Optional_Op<"pack_opt", [NoSideEffect]> {
-  let summary = "pack_opt";
-  let description = [{
-  }];
-
-  let arguments = (ins I1:$isPresent, Variadic<AnyType>:$values);
-
-  let results = (outs OptionalType:$result);
-
-  let assemblyFormat = [{
-    `(` operands `)` attr-dict `:` functional-type(operands, $result)
-  }];
-}
-
-def UnpackOptionalOp : Optional_Op<"unpack_opt", [NoSideEffect]> {
-  let summary = "unpack_opt";
-  let description = [{
-  }];
-
-  let arguments = (ins OptionalType:$input);
-
-  let results = (outs I1:$isDefined, Variadic<AnyType>:$values);
-
-  let hasCanonicalizer = 1;
-
-  let assemblyFormat = [{
-    `(` $input `)` attr-dict `:` functional-type($input, results)
-  }];
-}
-
 def UndefinedOp : Optional_Op<"undefined", [NoSideEffect]> {
   let summary = "undefined";
   let description = [{

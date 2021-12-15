@@ -13,13 +13,15 @@
 #include "llvm/Support/ToolOutputFile.h"
 
 #include "Conversion/Passes.h"
+#include "Transforms/Passes.h"
 
 #include "Optional/OptionalDialect.h"
 #include "Control/ControlDialect.h"
 
 int main(int argc, char **argv) {
     mlir::registerAllPasses();
-    hail::registerOptionalToStandardPass();
+    hail::registerConversionPasses();
+    hail::registerTransformsPasses();
 
     mlir::DialectRegistry registry;
     registry.insert<hail::optional::OptionalDialect>();
