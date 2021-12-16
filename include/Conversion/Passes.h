@@ -2,6 +2,7 @@
 #define HAIL_CONVERSION_PASSES_H
 
 #include "Conversion/OptionalToStandard/OptionalToStandard.h"
+#include "Conversion/ControlToStandard/ControlToStandard.h"
 
 namespace hail {
 

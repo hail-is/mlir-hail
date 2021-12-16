@@ -1,1 +1,2 @@
+add_subdirectory(ControlToStandard)
 add_subdirectory(OptionalToStandard)
