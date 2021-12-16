@@ -19,9 +19,9 @@ set(LIBS
         MLIRTargetLLVMIRExport
         MLIRToLLVMIRTranslationRegistration
 
-        HailOptionalToStandard
         HailOptional
         HailControl
+        HailTransforms
         )
 add_llvm_executable(hailc hailc.cpp)
 install(TARGETS hailc

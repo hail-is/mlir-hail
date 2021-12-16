@@ -134,8 +134,9 @@ static int loadAndProcess(std::unique_ptr<llvm::MemoryBuffer> inputFile,
 
   if (isLowering) {
     mlir::OpPassManager &optPM = pm.nest<mlir::FuncOp>();
-    // partly lower optional to std/scf
+    // partly lower optional & control to std/scf
     optPM.addPass(hail::createLowerOptionalToSTDPass());
+    optPM.addPass(hail::createLowerControlToSTDPass());
   }
 
   bool isLoweringLLVM = action >= DumpMLIRLLVM;
