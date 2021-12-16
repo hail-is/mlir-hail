@@ -9,6 +9,9 @@ set(LIBS
         HailTransforms
         )
 add_llvm_executable(hail-opt hail-opt.cpp)
+install(TARGETS hail-opt
+    RUNTIME DESTINATION ${LLVM_TOOLS_INSTALL_DIR}
+    COMPONENT hail-opt)
 
 llvm_update_compile_flags(hail-opt)
 target_link_libraries(hail-opt PRIVATE ${LIBS})

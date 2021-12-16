@@ -24,6 +24,9 @@ set(LIBS
         HailControl
         )
 add_llvm_executable(hailc hailc.cpp)
+install(TARGETS hailc
+    RUNTIME DESTINATION ${LLVM_TOOLS_INSTALL_DIR}
+    COMPONENT hailc)
 
 llvm_update_compile_flags(hailc)
 target_link_libraries(hailc PRIVATE ${LIBS})
