@@ -4,6 +4,16 @@
 include "mlir/Pass/PassBase.td"
 
 //===----------------------------------------------------------------------===//
+// ControlToStandard
+//===----------------------------------------------------------------------===//
+
+def ControlToStandard : Pass<"convert-control-to-std"> {
+  let summary = "Convert Control dialect to Standard dialect";
+  let constructor = "hail::createLowerControlToSTDPass()";
+  let dependentDialects = ["StandardOpsDialect"];
+}
+
+//===----------------------------------------------------------------------===//
 // OptionalToStandard
 //===----------------------------------------------------------------------===//
 
