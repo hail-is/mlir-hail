@@ -1,8 +1,10 @@
+#include "Control/ControlDialect.h"
 #include "Optional/OptionalDialect.h"
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/PatternMatch.h"
 
 using namespace mlir;
+using namespace hail;
 using namespace hail::optional;
 
 /// Replaces the given op with the contents of the given single-block region,
@@ -49,8 +51,8 @@ struct RemoveConstructConsumeOpt : public OpRewritePattern<ConsumeCoOptOp> {
         if (!op.opt().hasOneUse()) {
             return failure();
         }
-        Block *block = &construct.reg().front();
-        rewriter.mergeBlockBefore(block, op, op.getOperands().slice(1, 2));
+        Block &block = construct.body();
+        rewriter.mergeBlockBefore(&block, op, op.getOperands().slice(1, 2));
         rewriter.eraseOp(op);
         rewriter.eraseOp(construct);
         return success();
@@ -93,7 +95,7 @@ void CoOptToOptOp::getCanonicalizationPatterns(RewritePatternSet &results,
 
 static LogicalResult verify(ConsumeOptOp op) {
     auto inputTypes = op.input().getType().cast<OptionalType>().getValueTypes();
-    auto presentTypes = op.presentBlock()->getArgumentTypes();
+    auto presentTypes = op.presentBlock().getArgumentTypes();
 
     if (inputTypes != presentTypes)
         return op.emitOpError(
@@ -103,10 +105,40 @@ static LogicalResult verify(ConsumeOptOp op) {
     return RegionBranchOpInterface::verifyTypes(op);
 }
 
-Block *ConsumeOptOp::missingBlock() { return &missingRegion().back(); }
-YieldOp ConsumeOptOp::missingYield() { return cast<YieldOp>(&missingBlock()->back()); }
-Block *ConsumeOptOp::presentBlock() { return &presentRegion().back(); }
-YieldOp ConsumeOptOp::presentYield() { return cast<YieldOp>(&presentBlock()->back()); }
+static LogicalResult verify(ConstructCoOptOp op) {
+  auto coOptType = op.getType();
+  auto valueTypes = coOptType.getValueTypes();
+  if (op.body().getNumArguments() != 2)
+    return op.emitOpError("expects the body to have exactly two arguments");
+  auto missingContType = op.body().getArgument(0).getType().dyn_cast<control::ContinuationType>();
+  if (!missingContType || !missingContType.getInputTypes().empty())
+    return op.emitOpError("expects the first body argument to be a missing continuation with zero args");
+  auto presentContType = op.body().getArgument(1).getType().dyn_cast<control::ContinuationType>();
+  if (!presentContType || presentContType.getInputTypes() != valueTypes)
+    return op.emitOpError("expects the second body argument to be a present continuation with arg types "
+                          "matching the value types of the result CoOptional type");
+  return success();
+}
+
+static LogicalResult verify(ConsumeCoOptOp op) {
+  auto coOptType = op.opt().getType().cast<CoOptionalType>();
+  auto valueTypes = coOptType.getValueTypes();
+  auto missingContType = op.missing().getType().dyn_cast<control::ContinuationType>();
+  if (!missingContType || !missingContType.getInputTypes().empty())
+    return op.emitOpError("expects the second argument to be a missing continuation with zero args");
+  auto presentContType = op.present().getType().dyn_cast<control::ContinuationType>();
+  if (!presentContType || presentContType.getInputTypes() != valueTypes)
+    return op.emitOpError("expects the third argument to be a present continuation with arg types "
+                          "matching the value types of the first arg's CoOptional type");
+  return success();
+}
+
+Block &ConsumeOptOp::missingBlock() { return missingRegion().front(); }
+YieldOp ConsumeOptOp::missingYield() { return cast<YieldOp>(missingBlock().back()); }
+Block &ConsumeOptOp::presentBlock() { return presentRegion().front(); }
+YieldOp ConsumeOptOp::presentYield() { return cast<YieldOp>(presentBlock().back()); }
+
+Block &ConstructCoOptOp::body() { return bodyRegion().back(); }
 
 /// Given the region at `index`, or the parent operation if `index` is None,
 /// return the successor regions. These are the regions that may be selected

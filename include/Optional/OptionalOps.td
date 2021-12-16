@@ -31,6 +31,7 @@ def MissingOp : Optional_Op<"missing", [NoSideEffect]> {
 }
 
 def ConsumeOptOp : Optional_Op<"consume_opt", [
+      NoSideEffect,
       DeclareOpInterfaceMethods<RegionBranchOpInterface>,
       SingleBlockImplicitTerminator<"YieldOp">]> {
   let summary = "consume_opt";
@@ -50,9 +51,9 @@ def ConsumeOptOp : Optional_Op<"consume_opt", [
   }];
 
   let extraClassDeclaration = [{
-    mlir::Block *missingBlock();
+    mlir::Block &missingBlock();
     YieldOp missingYield();
-    mlir::Block *presentBlock();
+    mlir::Block &presentBlock();
     YieldOp presentYield();
   }];
 }
@@ -102,20 +103,26 @@ def CoOptToOptOp : Optional_Op<"co_opt_to_opt",
   let hasCanonicalizer = 1;
 }
 
-def ConstructCoOptOp : Optional_Op<"construct_co_opt"> {
+def ConstructCoOptOp : Optional_Op<"construct_co_opt", [NoSideEffect]> {
   let summary = "construct a co-optional type";
   let description = [{
   }];
 
   let results = (outs CoOptionalType:$results);
 
-  let regions = (region SizedRegion<1>:$reg);
+  let regions = (region SizedRegion<1>:$bodyRegion);
+
+  let verifier = [{ return ::verify(*this); }];
+
+  let extraClassDeclaration = [{
+    mlir::Block &body();
+  }];
 
   let assemblyFormat =
-      [{ $reg attr-dict `:` type($results) }];
+      [{ $bodyRegion attr-dict `:` type($results) }];
 }
 
-def ConsumeCoOptOp : Optional_Op<"consume_co_opt", [Terminator]> {
+def ConsumeCoOptOp : Optional_Op<"consume_co_opt", [NoSideEffect, Terminator]> {
   let summary = "consume a co-optional type";
   let description = [{
   }];
@@ -124,6 +131,8 @@ def ConsumeCoOptOp : Optional_Op<"consume_co_opt", [Terminator]> {
   let arguments = (ins CoOptionalType:$opt, AnyType:$missing, AnyType:$present);
 
   let hasCanonicalizer = 1;
+
+  let verifier = [{ return ::verify(*this); }];
 
   let assemblyFormat = [{
     `(` $opt `,` $missing `,` $present `)` attr-dict `:` `(` type($opt) `,` type($missing) `,` type($present) `)`
