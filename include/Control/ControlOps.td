@@ -2,9 +2,10 @@
 #define HAIL_CONTROL_OPS
 
 include "mlir/Interfaces/ControlFlowInterfaces.td"
+include "mlir/Interfaces/SideEffectInterfaces.td"
 include "ControlDialect.td"
 
-def DefContOp : Control_Op<"defcont", []> {
+def DefContOp : Control_Op<"defcont", [NoSideEffect]> {
   let summary = "Define a continuation";
   let description = [{
   }];
@@ -22,7 +23,7 @@ def DefContOp : Control_Op<"defcont", []> {
   }];
 }
 
-def ApplyContOp : Control_Op<"apply", [Terminator]> {
+def ApplyContOp : Control_Op<"apply", [Terminator, NoSideEffect]> {
   let summary = "Apply a continuation";
   let description = [{
   }];
@@ -36,7 +37,7 @@ def ApplyContOp : Control_Op<"apply", [Terminator]> {
   }];
 }
 
-def CallCCOp : Control_Op<"callcc", []> {
+def CallCCOp : Control_Op<"callcc", [NoSideEffect]> {
   let summary = "Call with current continuation";
   let description = [{
   }];
