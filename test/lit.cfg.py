@@ -7,6 +7,9 @@ config.suffixes = ['.mlir']
 config.test_source_root = os.path.dirname(__file__)
 config.test_exec_root = os.path.join(config.hail_bin_root, 'test')
 
-config.substitutions.append(
-    ('hail-opt', os.path.join(config.hail_bin_root, 'bin', 'hail-opt'))
+SUBSTITUTIONS = (
+    ('hail-opt', os.path.join(config.hail_bin_root, 'bin', 'hail-opt')),
+    ('FileCheck', config.file_check_path)
 )
+
+config.substitutions.extend(SUBSTITUTIONS)
