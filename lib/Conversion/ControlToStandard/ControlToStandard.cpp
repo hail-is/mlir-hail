@@ -27,7 +27,7 @@ void ControlToStandardPass::runOnOperation() {
   // add nested ops to worklist in postorder
   for (auto &region : getOperation()->getRegions())
     region.walk([&worklist](Operation *op) {
-      if (isa<CallCCOp>(op) || isa<DefContOp>(op))
+      if (isa<CallCCOp>(op) || isa<DefContOp>(op) || isa<IfOp>(op))
         worklist.push_back(op);
     });
 
@@ -81,11 +81,19 @@ void ControlToStandardPass::runOnOperation() {
             signalPassFailure();
           }
           rewriter.setInsertionPoint(applyOp);
+          assert(body->getNumArguments() == applyOp.values().size());
           rewriter.replaceOpWithNewOp<BranchOp>(applyOp, applyOp.values(), body);
         }
         assert(op.result().use_empty() && "should be no uses of defcont result");
         // there are no more uses, safe to delete
         rewriter.eraseOp(op);
+      })
+      .Case<IfOp>([&, this](IfOp op) {
+        Block *thenBlock = &op.thenBlock();
+        Block *elseBlock = &op.elseBlock();
+        rewriter.inlineRegionBefore(op.thenRegion(), *op->getParentRegion(), std::next(op->getBlock()->getIterator()));
+        rewriter.inlineRegionBefore(op.elseRegion(), *op->getParentRegion(), std::next(op->getBlock()->getIterator()));
+        rewriter.replaceOpWithNewOp<CondBranchOp>(op, op.condition(), thenBlock, elseBlock);
       })
       .Default([](Operation *op) {});
   }

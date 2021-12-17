@@ -23,7 +23,7 @@ def DefContOp : Control_Op<"defcont", [NoSideEffect]> {
   }];
 }
 
-def ApplyContOp : Control_Op<"apply", [Terminator, NoSideEffect]> {
+def ApplyContOp : Control_Op<"apply", [Terminator]> {
   let summary = "Apply a continuation";
   let description = [{
   }];
@@ -37,7 +37,7 @@ def ApplyContOp : Control_Op<"apply", [Terminator, NoSideEffect]> {
   }];
 }
 
-def CallCCOp : Control_Op<"callcc", [NoSideEffect]> {
+def CallCCOp : Control_Op<"callcc", [RecursiveSideEffects]> {
   let summary = "Call with current continuation";
   let description = [{
   }];
@@ -54,6 +54,23 @@ def CallCCOp : Control_Op<"callcc", [NoSideEffect]> {
   let extraClassDeclaration = [{
     mlir::Block *body();
   }];
+}
+
+def IfOp : Control_Op<"if",
+      //[DeclareOpInterfaceMethods<RegionBranchOpInterface>,
+       [SingleBlock, NoRegionArguments, Terminator]> {
+  let summary = "if-then-else operation";
+  let description = [{
+  }];
+  let arguments = (ins I1:$condition);
+  let regions = (region SizedRegion<1>:$thenRegion, SizedRegion<1>:$elseRegion);
+
+  let extraClassDeclaration = [{
+    mlir::Block& thenBlock();
+    mlir::Block& elseBlock();
+  }];
+
+  // let hasCanonicalizer = 1;
 }
 
 #endif

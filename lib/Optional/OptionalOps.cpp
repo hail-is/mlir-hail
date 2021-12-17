@@ -76,6 +76,24 @@ struct RemoveCoOptToOptConversion : public OpRewritePattern<CoOptToOptOp> {
   }
 };
 
+struct RemoveOptToCoOptConversion : public OpRewritePattern<OptToCoOptOp> {
+  using OpRewritePattern<OptToCoOptOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(OptToCoOptOp op,
+                                PatternRewriter &rewriter) const override {
+    auto opt = op.input();
+    if (auto coOptToOpt = opt.getDefiningOp<CoOptToOptOp>()) {
+      if (opt.hasOneUse()) {
+        rewriter.replaceOp(op, coOptToOpt.input());
+        rewriter.eraseOp(coOptToOpt);
+        return success();
+      }
+    }
+
+    return failure();
+  }
+};
+
 } // namespace
 
 void ConsumeOptOp::getCanonicalizationPatterns(RewritePatternSet &results,
@@ -91,6 +109,11 @@ void ConsumeCoOptOp::getCanonicalizationPatterns(RewritePatternSet &results,
 void CoOptToOptOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                                MLIRContext *context) {
     results.add<RemoveCoOptToOptConversion>(context);
+}
+
+void OptToCoOptOp::getCanonicalizationPatterns(RewritePatternSet &results,
+                                               MLIRContext *context) {
+  results.add<RemoveOptToCoOptConversion>(context);
 }
 
 static LogicalResult verify(ConsumeOptOp op) {
