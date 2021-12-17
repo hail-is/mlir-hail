@@ -31,7 +31,7 @@ def MissingOp : Optional_Op<"missing", [NoSideEffect]> {
 }
 
 def ConsumeOptOp : Optional_Op<"consume_opt", [
-      NoSideEffect,
+      RecursiveSideEffects,
       DeclareOpInterfaceMethods<RegionBranchOpInterface>,
       SingleBlockImplicitTerminator<"YieldOp">]> {
   let summary = "consume_opt";
@@ -58,7 +58,7 @@ def ConsumeOptOp : Optional_Op<"consume_opt", [
   }];
 }
 
-def YieldOp : Optional_Op<"yield", [NoSideEffect, ReturnLike, Terminator,
+def YieldOp : Optional_Op<"yield", [ReturnLike, Terminator,
                                     ParentOneOf<["ConsumeOptOp"]>]> {
   let summary = "consume_opt yield and termination operation";
   let description = [{
@@ -84,7 +84,7 @@ def OptToCoOptOp : Optional_Op<"opt_to_co_opt",
 
   let assemblyFormat = [{ `(` $input `:` type($input) `)` attr-dict }];
 
-  // let hasCanonicalizer = 1; // FIXME
+  let hasCanonicalizer = 1;
 }
 
 def CoOptToOptOp : Optional_Op<"co_opt_to_opt",
@@ -122,7 +122,7 @@ def ConstructCoOptOp : Optional_Op<"construct_co_opt", [NoSideEffect]> {
       [{ $bodyRegion attr-dict `:` type($results) }];
 }
 
-def ConsumeCoOptOp : Optional_Op<"consume_co_opt", [NoSideEffect, Terminator]> {
+def ConsumeCoOptOp : Optional_Op<"consume_co_opt", [Terminator]> {
   let summary = "consume a co-optional type";
   let description = [{
   }];

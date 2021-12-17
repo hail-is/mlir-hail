@@ -8,6 +8,7 @@
 #include "mlir/Transforms/DialectConversion.h"
 
 #include "Optional/OptionalDialect.h"
+#include "Control/ControlDialect.h"
 
 
 using namespace mlir;
@@ -182,7 +183,6 @@ struct ConvertSCFYieldReturningOptional : public OpConversionPattern<scf::YieldO
     for (auto operand : operands) {
       Type type = operand.getType();
       if (auto optType = type.dyn_cast<OptionalType>()) {
-        TypeRange valueTypes = optType.getValueTypes();
         LoweredOptional unpack = unpackOptional(rewriter, op->getLoc(), operand);
         newOperands.push_back(unpack.isDefined());
         newOperands.append(unpack.values().begin(), unpack.values().end());
@@ -198,11 +198,95 @@ struct ConvertSCFYieldReturningOptional : public OpConversionPattern<scf::YieldO
   }
 };
 
+struct ConvertOptToCoOptOp : public OpConversionPattern<OptToCoOptOp> {
+  using OpConversionPattern<OptToCoOptOp>::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(OptToCoOptOp op, ArrayRef<Value> operands,
+                                ConversionPatternRewriter &rewriter) const override {
+    auto coOptType = op.getType();
+    LoweredOptional unpack = unpackOptional(rewriter, op.getLoc(), operands[0]);
+    auto newOp = rewriter.replaceOpWithNewOp<ConstructCoOptOp>(op, coOptType);
+    newOp.bodyRegion().emplaceBlock();
+    newOp.bodyRegion().addArgument(control::ContinuationType::get(rewriter.getContext(), {}));
+    newOp.bodyRegion().addArgument(control::ContinuationType::get(rewriter.getContext(), coOptType.getValueTypes()));
+    rewriter.setInsertionPointToStart(&newOp.body());
+
+    auto ifOp = rewriter.create<control::IfOp>(op.getLoc(), unpack.isDefined());
+    ifOp.thenRegion().emplaceBlock();
+    ifOp.elseRegion().emplaceBlock();
+
+    rewriter.setInsertionPointToStart(&ifOp.thenBlock());
+    rewriter.create<control::ApplyContOp>(op.getLoc(), newOp.bodyRegion().getArgument(1), unpack.values());
+
+    rewriter.setInsertionPointToStart(&ifOp.elseBlock());
+    rewriter.create<control::ApplyContOp>(op.getLoc(), newOp.bodyRegion().getArgument(0), ValueRange{});
+
+    return success();
+  }
+};
+
+struct ConvertCoOptToOptOp : public OpConversionPattern<CoOptToOptOp> {
+  using OpConversionPattern<CoOptToOptOp>::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(CoOptToOptOp op, ArrayRef<Value> operands,
+                                ConversionPatternRewriter &rewriter) const override {
+    // TODO: This is messy. Add more ergonomic builders for control ops to clean this up.
+    auto constructCoOpt = operands[0].getDefiningOp<ConstructCoOptOp>();
+    if (!constructCoOpt) return failure();
+
+    auto optType = op.getType();
+
+    llvm::SmallVector<Type, 2> resultTypes;
+    resultTypes.reserve(optType.getNumValueTypes() + 1);
+    resultTypes.push_back(rewriter.getI1Type());
+    resultTypes.append(optType.getValueTypes().begin(), optType.getValueTypes().end());
+
+    auto callcc = rewriter.create<control::CallCCOp>(op.getLoc(), resultTypes);
+    rewriter.replaceOpWithNewOp<UnrealizedConversionCastOp>(op, optType, callcc.getResults());
+
+    callcc.bodyRegion().emplaceBlock();
+    callcc.bodyRegion().addArgument(control::ContinuationType::get(rewriter.getContext(), resultTypes));
+
+    rewriter.setInsertionPointToStart(callcc.body());
+
+    auto missingCont = rewriter.create<control::DefContOp>(op.getLoc(), control::ContinuationType::get(rewriter.getContext(), {}));
+    auto presentCont = rewriter.create<control::DefContOp>(
+            op.getLoc(), control::ContinuationType::get(rewriter.getContext(), optType.getValueTypes()));
+    rewriter.mergeBlocks(&constructCoOpt.body(), callcc.body(), {missingCont, presentCont});
+
+    missingCont.bodyRegion().emplaceBlock();
+    presentCont.bodyRegion().emplaceBlock();
+    presentCont.bodyRegion().addArguments(optType.getValueTypes());
+
+    rewriter.setInsertionPointToStart(presentCont.body());
+    llvm::SmallVector<Value, 2> results;
+    results.reserve(optType.getNumValueTypes() + 1);
+    auto constTrue = rewriter.create<ConstantOp>(op.getLoc(), BoolAttr::get(rewriter.getContext(), true));
+    results.push_back(constTrue);
+    results.append(presentCont.body()->getArguments().begin(), presentCont.body()->getArguments().end());
+    rewriter.create<control::ApplyContOp>(op.getLoc(), callcc.body()->getArgument(0), results);
+
+    rewriter.setInsertionPointToStart(missingCont.body());
+    results.clear();
+    auto constFalse = rewriter.create<ConstantOp>(op.getLoc(), BoolAttr::get(rewriter.getContext(), false));
+    results.push_back(constFalse);
+    llvm::transform(optType.getValueTypes(), std::back_inserter(results), [&](Type type) {
+      auto undefined = rewriter.create<UndefinedOp>(op.getLoc(), type);
+      return undefined.getResult();
+    });
+    rewriter.create<control::ApplyContOp>(op.getLoc(), callcc.body()->getArgument(0), results);
+
+    rewriter.eraseOp(constructCoOpt);
+
+    return success();
+  }
+};
+
 }
 
 void hail::populateOptionalToStdConversionPatterns(RewritePatternSet &patterns) {
-  patterns.add<ConvertPresentOp, ConvertMissingOp, ConvertConsumeOptOp,
-               ConvertIfReturningOptional,
+  patterns.add<ConvertPresentOp, ConvertMissingOp, ConvertConsumeOptOp, ConvertOptToCoOptOp,
+               ConvertCoOptToOptOp, ConvertIfReturningOptional,
                ConvertSCFYieldReturningOptional>(patterns.getContext());
 }
 
@@ -211,7 +295,7 @@ void OptionalToStandardPass::runOnOperation() {
   populateOptionalToStdConversionPatterns(patterns);
   // Configure conversion to lower out .... Anything else is fine.
   ConversionTarget target(getContext());
-  target.addIllegalOp<PresentOp, MissingOp, ConsumeOptOp>();
+  target.addIllegalOp<PresentOp, MissingOp, ConsumeOptOp, OptToCoOptOp, CoOptToOptOp>();
   target.addDynamicallyLegalOp<scf::IfOp>([](scf::IfOp op) {
     for (auto result : op.results()) {
       if (result.getType().isa<OptionalType>()) return false;

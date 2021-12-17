@@ -5,7 +5,7 @@
 using namespace mlir;
 using namespace hail::control;
 
-Block *DefContOp::body() { return &bodyRegion().back(); }
+Block *DefContOp::body() { return &bodyRegion().front(); }
 
 static LogicalResult verify(DefContOp op) {
   auto bodyTypes = op.body()->getArgumentTypes();
@@ -29,7 +29,7 @@ static LogicalResult verify(ApplyContOp op) {
   return success();
 }
 
-Block *CallCCOp::body() { return &bodyRegion().back(); }
+Block *CallCCOp::body() { return &bodyRegion().front(); }
 
 static LogicalResult verify(CallCCOp op) {
   auto bodyTypes = op.body()->getArgumentTypes();
@@ -44,6 +44,9 @@ static LogicalResult verify(CallCCOp op) {
 
   return success();
 }
+
+Block &IfOp::thenBlock() { return thenRegion().front(); }
+Block &IfOp::elseBlock() { return elseRegion().front(); }
 
 #define GET_OP_CLASSES
 #include "Control/ControlOps.cpp.inc"
